@@ -1,41 +1,30 @@
-### Lark Integration
+# Lark Integration for ERPNext
 
-Lark Integration
+This app synchronizes ERPNext transactions (Sales Invoices, Purchase Invoices, Payment Entries, Expense Claims, and Journal Entries) to a Lark Bitable in real-time using Frappe Hooks and background workers.
 
-### Installation
+## Features
 
-You can install this app using the [bench](https://github.com/frappe/bench) CLI:
+- **Automated Sync**: Triggers on document submission (`on_submit`).
+- **Cancellation Handling**: Automatically updates Lark records to "Cancelled" when a document is cancelled in ERPNext.
+- **Journal Entry Support**: Detects invoice references within Journal Entries and updates the corresponding Invoice status/outstanding amount in Lark.
+- **PDF Attachments**: Generates and uploads the ERPNext Print Format PDF directly to the Lark record.
+- **Background Processing**: Uses `frappe.enqueue` to ensure the user interface remains fast.
 
-```bash
-cd $PATH_TO_YOUR_BENCH
-bench get-app $URL_OF_THIS_REPO --branch develop
-bench install-app lark_integration
-```
+## Configuration
 
-### Contributing
+Open `api.py` and update the following constants with your Lark App credentials:
 
-This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
+* `APP_ID`: Your Lark App ID.
+* `APP_SECRET`: Your Lark App Secret.
+* `APP_TOKEN`: The Token/ID of your Lark Bitable.
+* `TABLE_IDs`: Ensure the Table IDs match your specific Bitable tabs.
 
-```bash
-cd apps/lark_integration
-pre-commit install
-```
+## Installation
 
-Pre-commit is configured to use the following tools for checking and formatting your code:
-
-- ruff
-- eslint
-- prettier
-- pyupgrade
-
-### CI
-
-This app can use GitHub Actions for CI. The following workflows are configured:
-
-- CI: Installs this app and runs unit tests on every push to `develop` branch.
-- Linters: Runs [Frappe Semgrep Rules](https://github.com/frappe/semgrep-rules) and [pip-audit](https://pypi.org/project/pip-audit/) on every pull request.
-
-
-### License
-
-gpl-2.0
+1. Push this code to your GitHub repository.
+2. In your bench environment:
+   ```bash
+   bench get-app [https://github.com/maxfu9/lark_integration.git](https://github.com/maxfu9/lark_integration.git)
+   bench install-app lark_integration
+   bench migrate
+   bench restart
