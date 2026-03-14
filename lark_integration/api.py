@@ -128,6 +128,12 @@ def _get_config():
 		config["error_notification_chat_id"] = settings.error_notification_chat_id or ""
 		config["notify_on_sync_success"] = bool(settings.notify_on_sync_success)
 		config["notify_on_batch_success"] = bool(settings.notify_on_batch_success)
+		
+		# Role-based recipients
+		config["notification_recipients"] = [
+			{"role": d.erpnext_role, "chat_id": d.lark_chat_id}
+			for d in settings.get("notification_recipients", [])
+		]
 
 	if config["request_timeout"] <= 0:
 		config["request_timeout"] = DEFAULT_REQUEST_TIMEOUT
@@ -239,6 +245,10 @@ def _get_sync_mapping(doctype: str):
 					for d in sync_doc.get("child_field_mappings", [])
 					if d.lark_field and (d.child_field_path or d.child_field)
 				]
+
+			mapping["notification_roles"] = [
+				d.role for d in sync_doc.get("notification_roles", [])
+			]
 
 	mapping["app_token"] = mapping.get("app_token")
 
@@ -658,17 +668,42 @@ def get_lark_token(force_refresh: bool = False):
 	return token
 
 
-def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False):
+def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, roles=None):
 	"""
 	Centralized helper to send a notification message to Lark Messenger.
+	Supports role-based routing if roles are provided.
 	"""
 	config = _get_config()
 	if not config.get("enable_global_error_notifications") or not config.get("error_notification_chat_id"):
 		return
 
-	# If it's a success message but success notifications are disabled, skip
+	# 1. Identify Target Chat IDs
+	target_chats = set()
+	
+	# Global/Error fallback
+	global_chat_id = config.get("error_notification_chat_id")
+	
+	if roles:
+		if isinstance(roles, str):
+			roles = [roles]
+		
+		# Resolve roles from mapping
+		recipients = config.get("notification_recipients", [])
+		for r in recipients:
+			if r["role"] in roles:
+				target_chats.add(r["chat_id"])
+	
+	# If no specific roles or no mapping found, use global chat
+	# Always include global chat for errors for safety
+	if not target_chats or is_error:
+		if global_chat_id:
+			target_chats.add(global_chat_id)
+
+	if not target_chats:
+		return
+
+	# 2. Check Success Toggle
 	if not is_error and not config.get("notify_on_sync_success"):
-		# Check if it might be a batch success which has its own toggle
 		if not config.get("notify_on_batch_success"):
 			return
 
@@ -677,22 +712,23 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False):
 		return
 
 	url = f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id"
-	
 	icon = "🚨" if is_error else "✅"
 	
-	# Rich text content
-	content = {
-		"text": f"{icon} **{title}**\n\n{message}"
-	}
-	
 	import json
-	payload = {
-		"receive_id": config["error_notification_chat_id"],
-		"msg_type": "text",
-		"content": json.dumps(content)
-	}
+	content = {"text": f"{icon} **{title}**\n\n{message}"}
 	
-	return _lark_request("POST", url, token=token, json=payload, skip_logging=True)
+	# 3. Send to all targets
+	results = []
+	for chat_id in target_chats:
+		payload = {
+			"receive_id": chat_id,
+			"msg_type": "text",
+			"content": json.dumps(content)
+		}
+		res = _lark_request("POST", url, token=token, json=payload, skip_logging=True)
+		results.append(res)
+	
+	return results
 
 
 def lark_background_worker(job_name):
@@ -715,7 +751,7 @@ def lark_background_worker(job_name):
 				error_msg += f"⚠️ **Error**: {str(e)}\n"
 				error_msg += f"🔗 [View Error Log]({frappe.utils.get_url()}/app/error-log?title=Lark%20Worker%20Failure:%20{job_name.replace(' ', '%20')})"
 				
-				send_lark_notification(error_msg, title=f"🚨 Lark Worker Error")
+				send_lark_notification(error_msg, title=f"🚨 Lark Worker Error", is_error=True, roles=["System Manager"])
 				
 				# Re-raise for Frappe's background job manager
 				raise e
@@ -1841,7 +1877,7 @@ def sync_universal(doctype, doc_name, **kwargs):
 		if config.get("notify_on_sync_success"):
 			msg = f"**Document Synced**: {doctype} {doc_name}\n"
 			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
-			send_lark_notification(msg, title="Document Sync Success", is_error=False)
+			send_lark_notification(msg, title="Document Sync Success", is_error=False, roles=mapping.get("notification_roles"))
 
 	except Exception as e:
 		# Decorator lark_background_worker will handle the notification for unhandled exceptions

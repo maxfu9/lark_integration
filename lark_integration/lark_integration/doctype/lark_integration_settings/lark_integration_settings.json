@@ -69,7 +69,8 @@
   "enable_global_error_notifications",
   "error_notification_chat_id",
   "notify_on_sync_success",
-  "notify_on_batch_success"
+  "notify_on_batch_success",
+  "notification_recipients"
  ],
  "fields": [
   {
@@ -468,6 +469,13 @@
     "fieldtype": "Check",
     "label": "Notify on Batch Sync Success",
     "description": "Send a summary notification after a batch of records is successfully processed."
+   },
+   {
+    "fieldname": "notification_recipients",
+    "fieldtype": "Table",
+    "label": "Role-Based Recipients",
+    "description": "Map ERPNext Roles to specific Lark Chat IDs for targeted notifications.",
+    "options": "Lark Notification Recipient"
    },
    {
     "fieldname": "backup_progress",
