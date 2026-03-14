@@ -736,22 +736,30 @@ def process_lark_notifications(doc, event):
 		send_lark_notification(message, title=subject, target_chats=list(target_chats))
 
 
-def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None):
+def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None):
 	"""
 	Low-level sender to Lark Messenger.
-	Supports direct chat IDs or global error routing.
+	Supports direct chat IDs, ERPNext roles, or global error routing.
 	"""
 	config = _get_config()
 	if not config.get("enable_global_error_notifications") or not config.get("error_notification_chat_id"):
 		return
 
 	chats = set(target_chats) if target_chats else set()
+	role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
 	
+	# 1. Resolve Roles
+	if roles:
+		if isinstance(roles, str): roles = [roles]
+		for r_name in roles:
+			chat_id = role_to_chat.get(r_name)
+			if chat_id: chats.add(chat_id)
+
+	# 2. Error Routing
 	if is_error:
 		global_id = config.get("error_notification_chat_id")
 		if global_id: chats.add(global_id)
-		# Fallback: Notify System Managers from the chat registry
-		role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
+		# Fallback: Notify System Managers
 		sm_chat = role_to_chat.get("System Manager")
 		if sm_chat: chats.add(sm_chat)
 
