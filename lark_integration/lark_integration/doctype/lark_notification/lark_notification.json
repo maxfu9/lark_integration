@@ -1,0 +1,129 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-15 00:06:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "document_type",
+  "channel",
+  "event",
+  "changed_field",
+  "method",
+  "date_changed",
+  "days_before_after",
+  "condition",
+  "subject",
+  "message",
+  "recipients"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "label": "Document Type",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "default": "Lark Messenger",
+   "fieldname": "channel",
+   "fieldtype": "Select",
+   "label": "Channel",
+   "options": "Lark Messenger",
+   "read_only": 1
+  },
+  {
+   "fieldname": "event",
+   "fieldtype": "Select",
+   "label": "Event",
+   "options": "New\nSave\nSubmit\nCancel\nValue Change\nMethod\nDays Before\nDays After",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.event == 'Value Change'",
+   "fieldname": "changed_field",
+   "fieldtype": "Data",
+   "label": "Changed Field",
+   "description": "Trigger when this field is modified."
+  },
+  {
+   "depends_on": "eval:doc.event == 'Method'",
+   "fieldname": "method",
+   "fieldtype": "Data",
+   "label": "Method",
+   "description": "Trigger on this controller method."
+  },
+  {
+   "depends_on": "eval:['Days Before', 'Days After'].includes(doc.event)",
+   "fieldname": "date_changed",
+   "fieldtype": "Data",
+   "label": "Date Field",
+   "description": "Field to monitor for date-based trigger."
+  },
+  {
+   "depends_on": "eval:['Days Before', 'Days After'].includes(doc.event)",
+   "fieldname": "days_before_after",
+   "fieldtype": "Int",
+   "label": "Days Before/After"
+  },
+  {
+   "fieldname": "condition",
+   "fieldtype": "Code",
+   "label": "Condition",
+   "options": "Python",
+   "description": "Optional: Python condition (e.g., doc.status == 'Open')"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Data",
+   "label": "Subject",
+   "description": "Jinja enabled. Example: Order {{ doc.name }} Update",
+   "reqd": 1
+  },
+  {
+   "fieldname": "message",
+   "fieldtype": "Small Text",
+   "label": "Message",
+   "description": "Jinja enabled. Example: {{ doc.customer }} placed a new order.",
+   "reqd": 1
+  },
+  {
+   "fieldname": "recipients",
+   "fieldtype": "Table",
+   "label": "Recipients",
+   "options": "Lark Notification Recipient",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "modified": "2026-03-15 00:06:00.000000",
+ "modified_by": "Administrator",
+ "module": "Lark Integration",
+ "name": "Lark Notification",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
