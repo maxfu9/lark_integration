@@ -8,13 +8,14 @@
  "is_default": 0,
  "is_standard": 1,
  "label": "Lark Integration",
+ "title": "Lark Integration",
  "links": [
   {
    "label": "Settings",
    "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
-   "type": "Link"
+   "type": "Card Break"
   },
   {
    "dependencies": "Settings",
@@ -30,7 +31,7 @@
    "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
-   "type": "Link"
+   "type": "Card Break"
   },
   {
    "dependencies": "Configuration",
@@ -55,7 +56,7 @@
    "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
-   "type": "Link"
+   "type": "Card Break"
   },
   {
    "dependencies": "Data",
@@ -89,7 +90,7 @@
    "link_count": 0,
    "link_type": "DocType",
    "onboard": 0,
-   "type": "Link"
+   "type": "Card Break"
   },
   {
    "dependencies": "Logs",
@@ -101,7 +102,7 @@
    "type": "Link"
   }
  ],
- "modified": "2026-03-14 11:35:00.000000",
+ "modified": "2026-03-14 11:39:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Integration",
@@ -109,6 +110,7 @@
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,
+ "is_hidden": 0,
  "quick_lists": [],
  "roles": [
   {
