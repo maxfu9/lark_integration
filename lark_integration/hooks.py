@@ -50,14 +50,16 @@ doc_events = {
 scheduler_events = {
     "all": [
         "lark_integration.api.pull_lark_tasks",
-        "lark_integration.api.pull_lark_calendar_events"
+        "lark_integration.api.pull_lark_calendar_events",
+        "lark_integration.api.process_lark_sync_batches"
     ],
     "hourly": [
         "lark_integration.api.run_backup_scheduler"
     ],
     "daily": [
         "lark_integration.api.sync_overdue_documents",
-        "lark_integration.api.clear_old_lark_logs"
+        "lark_integration.api.clear_old_lark_logs",
+        "lark_integration.api.clear_old_sync_queue_records"
     ]
 }
 

@@ -16,6 +16,9 @@
   "section_break_runtime",
   "mapping_note",
   "section_break_runtime_fields",
+  "store_lark_record_id",
+  "enable_batching",
+  "batch_size",
   "column_break_runtime",
   "enable_api_logging",
   "request_timeout",
@@ -127,6 +130,28 @@
    "fieldname": "column_break_runtime",
    "fieldtype": "Column Break"
   },
+   {
+    "default": "1",
+    "fieldname": "store_lark_record_id",
+    "fieldtype": "Check",
+    "label": "Store Lark Record ID",
+    "description": "Store the Lark Record ID in ERPNext to avoid redundant search calls during updates. Recommended for performance."
+   },
+   {
+    "default": "0",
+    "fieldname": "enable_batching",
+    "fieldtype": "Check",
+    "label": "Enable Batch Synchronization",
+    "description": "Group multiple updates into a single API call to Lark. Best for high-volume transactions."
+   },
+   {
+    "default": "50",
+    "depends_on": "eval:doc.enable_batching",
+    "fieldname": "batch_size",
+    "fieldtype": "Int",
+    "label": "Batch Size",
+    "description": "Number of records to sync per batch call (max 500)."
+   },
   {
    "default": "0",
    "fieldname": "enable_api_logging",

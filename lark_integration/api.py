@@ -684,38 +684,74 @@ def upload_pdf_to_lark(doc, token, app_token):
 		frappe.log_error(title=f"Lark PDF Upload Fail: {doc.doctype} {doc.name}", message=frappe.get_traceback())
 		return None
 
-
 def upsert_lark_record(table_id, field_name, doc_name, fields, token, app_token, reference_doctype=None, reference_name=None):
 	if not token or not app_token:
 		return None
 
+	config = _get_config()
+	store_id = config.get("store_lark_record_id", True)
+	record_id = None
+	
+	if store_id and reference_doctype and reference_name:
+		try:
+			record_id = frappe.db.get_value(reference_doctype, reference_name, "lark_record_id")
+		except Exception:
+			# Field might not exist yet
+			pass
+
 	url = f"{LARK_BASE_URL}/bitable/v1/apps/{app_token}/tables/{table_id}/records"
 	
-	# Try exact match first
-	search_query = {
-		"filter": {
-			"conjunction": "and",
-			"conditions": [{"field_name": field_name, "operator": "is", "value": [doc_name]}],
-		},
-		"page_size": 1
-	}
-	search_res = _lark_request("POST", f"{url}/search", token=token, json=search_query, reference_doctype=reference_doctype, reference_name=reference_name)
-	
-	items = search_res.get("data", {}).get("items", []) if search_res else []
-	
-	# Fallback: if 'is' fails, try 'contains' (handles URL fields where text is custom but link contains ID)
-	if not items:
-		search_query["filter"]["conditions"][0]["operator"] = "contains"
-		search_res = _lark_request("POST", f"{url}/search", token=token, json=search_query)
-		items = search_res.get("data", {}).get("items", []) if search_res else []
+	# 1. Try direct update if we have a record_id
+	if record_id:
+		res = _lark_request("PUT", f"{url}/{record_id}", token=token, json={"fields": fields}, reference_doctype=reference_doctype, reference_name=reference_name)
+		if res and res.get("code") == 0:
+			# Direct update successful
+			return res
+		# If 404 (record deleted in Lark), fall back to search/create
+		if res and res.get("code") in (1254101, 1254104): 
+			record_id = None # Invalidate record_id to trigger search/create
 
-	if items:
-		# Update existing
-		record_id = items[0]["record_id"]
-		return _lark_request("PUT", f"{url}/{record_id}", token=token, json={"fields": fields}, reference_doctype=reference_doctype, reference_name=reference_name)
+	# 2. Search logic (Original Fallback)
+	if not record_id:
+		# Try exact match first
+		search_query = {
+			"filter": {
+				"conjunction": "and",
+				"conditions": [{"field_name": field_name, "operator": "is", "value": [doc_name]}],
+			},
+			"page_size": 1
+		}
+		search_res = _lark_request("POST", f"{url}/search", token=token, json=search_query, reference_doctype=reference_doctype, reference_name=reference_name)
 		
-	# Create new
-	return _lark_request("POST", url, token=token, json={"fields": fields}, reference_doctype=reference_doctype, reference_name=reference_name)
+		items = search_res.get("data", {}).get("items", []) if search_res else []
+		
+		# Fallback: if 'is' fails, try 'contains'
+		if not items:
+			search_query["filter"]["conditions"][0]["operator"] = "contains"
+			search_res = _lark_request("POST", f"{url}/search", token=token, json=search_query)
+			items = search_res.get("data", {}).get("items", []) if search_res else []
+
+		if items:
+			record_id = items[0]["record_id"]
+			res = _lark_request("PUT", f"{url}/{record_id}", token=token, json={"fields": fields}, reference_doctype=reference_doctype, reference_name=reference_name)
+		else:
+			# Create new
+			res = _lark_request("POST", url, token=token, json={"fields": fields}, reference_doctype=reference_doctype, reference_name=reference_name)
+			if res and res.get("data", {}).get("record", {}).get("record_id"):
+				record_id = res["data"]["record"]["record_id"]
+			elif res and res.get("data", {}).get("record_id"): # Some endpoints vary
+				record_id = res["data"]["record_id"]
+
+	# 3. Store ID back to ERPNext
+	if store_id and record_id and reference_doctype and reference_name:
+		try:
+			# Use db_set to avoid triggering hooks
+			frappe.db.set_value(reference_doctype, reference_name, "lark_record_id", record_id, update_modified=False)
+			frappe.db.commit()
+		except Exception:
+			pass
+
+	return res
 
 
 def clear_and_sync_items(table_id, parent_field_name, doc_name, item_records, token, app_token, reference_doctype=None, reference_name=None):
@@ -783,7 +819,6 @@ def upload_attachment_to_bitable(file_name: str, content: bytes, token: str, app
 	payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=reference_doctype, reference_name=reference_name)
 	if not payload:
 		return None
-	return payload.get("data", {}).get("file_token")
 	return payload.get("data", {}).get("file_token")
 
 
@@ -1681,6 +1716,11 @@ def sync_universal(doctype, doc_name, **kwargs):
 				
 			if lark_attachments:
 				fields["ERP Attachment"] = [{"file_token": t} for t in lark_attachments]
+
+		# Batching Optimization
+		if config.get("enable_batching") and not kwargs.get("force_immediate"):
+			enqueue_lark_sync_batch(doctype, doc_name, fields, mapping)
+			return
 
 		upsert_lark_record(mapping["main_table_id"], mapping["key_field"], doc.name, fields, token, mapping["app_token"], reference_doctype=doc.doctype, reference_name=doc.name)
 			
@@ -3427,6 +3467,164 @@ def clear_old_lark_logs():
 	from frappe.utils import add_days, now_datetime
 	cutoff_date = add_days(now_datetime(), -30)
 	frappe.db.delete("Lark API Log", {"creation": ["<", cutoff_date]})
+
+def enqueue_lark_sync_batch(doctype, doc_name, fields, mapping):
+	"""Queue a record for batch synchronization."""
+	import json
+	
+	# Keep only the latest version in queue
+	frappe.db.delete("Lark Sync Queue", {
+		"reference_doctype": doctype,
+		"reference_name": doc_name,
+		"status": "Pending"
+	})
+	
+	frappe.get_doc({
+		"doctype": "Lark Sync Queue",
+		"reference_doctype": doctype,
+		"reference_name": doc_name,
+		"table_id": mapping.get("main_table_id") or mapping.get("table_id"),
+		"app_token": mapping.get("app_token"),
+		"fields": json.dumps(fields),
+		"status": "Pending"
+	}).insert(ignore_permissions=True)
+	
+	frappe.db.commit()
+
+@frappe.whitelist()
+def process_lark_sync_batches():
+	"""Background job to process the Lark Sync Queue in batches."""
+	config = _get_config()
+	if not config.get("enable_batching"):
+		return
+
+	# Concurrency Lock
+	lock_key = f"lark_batch_sync_lock_{frappe.local.site}"
+	if frappe.cache.get_value(lock_key):
+		return
+	frappe.cache.set_value(lock_key, 1, expires_in_sec=600)
+
+	try:
+		batch_size = config.get("batch_size") or 50
+		
+		# Group by table_id and app_token to use Lark's batch API
+		pending_tasks = frappe.get_all("Lark Sync Queue", 
+			filters={"status": "Pending"}, 
+			fields=["name", "reference_doctype", "reference_name", "table_id", "app_token", "fields"],
+			order_by="creation asc",
+			limit=batch_size * 5
+		)
+		
+		if not pending_tasks:
+			return
+
+		token = get_lark_token()
+		if not token:
+			return
+
+		groups = {}
+		for task in pending_tasks:
+			key = (task.app_token, task.table_id)
+			if key not in groups:
+				groups[key] = []
+			groups[key].append(task)
+
+		for (app_token, table_id), tasks in groups.items():
+			for i in range(0, len(tasks), batch_size):
+				chunk = tasks[i:i + batch_size]
+				_process_lark_batch_chunk(app_token, table_id, chunk, token)
+	finally:
+		frappe.cache.delete_value(lock_key)
+
+def _process_lark_batch_chunk(app_token, table_id, chunk, token):
+	"""Internal helper to send a batch to Lark via bitable batch APIs."""
+	import json
+	
+	records_to_update = []
+	records_to_create = []
+	update_task_map = {} # record_id -> task
+	create_task_list = [] # index -> task
+	
+	for task in chunk:
+		fields = json.loads(task.fields)
+		record_id = None
+		try:
+			record_id = frappe.db.get_value(task.reference_doctype, task.reference_name, "lark_record_id")
+		except Exception:
+			pass
+		
+		record_payload = {"fields": fields}
+		if record_id:
+			record_payload["record_id"] = record_id
+			records_to_update.append(record_payload)
+			update_task_map[record_id] = task
+		else:
+			records_to_create.append(record_payload)
+			create_task_list.append(task)
+
+	# 1. Batch Update
+	if records_to_update:
+		url = f"{LARK_BASE_URL}/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_update"
+		res = _lark_request("POST", url, token=token, json={"records": records_to_update})
+		
+		if res and res.get("code") == 0:
+			# Even if code is 0, check individual records if returned (Lark usually returns records array)
+			updated_records = res.get("data", {}).get("records", [])
+			if updated_records:
+				for r in updated_records:
+					rid = r.get("record_id")
+					task = update_task_map.get(rid)
+					if task:
+						frappe.db.set_value("Lark Sync Queue", task.name, "status", "Synced")
+			else:
+				# Fallback if records array not present but code is 0
+				for r in records_to_update:
+					task = update_task_map.get(r["record_id"])
+					if task:
+						frappe.db.set_value("Lark Sync Queue", task.name, "status", "Synced")
+		else:
+			for r in records_to_update:
+				task = update_task_map.get(r["record_id"])
+				if task:
+					frappe.db.set_value("Lark Sync Queue", task.name, {"status": "Failed", "error_message": str(res)})
+
+	# 2. Batch Create
+	if records_to_create:
+		url = f"{LARK_BASE_URL}/bitable/v1/apps/{app_token}/tables/{table_id}/records/batch_create"
+		res = _lark_request("POST", url, token=token, json={"records": records_to_create})
+		
+		if res and res.get("code") == 0:
+			created_items = res.get("data", {}).get("records", [])
+			for idx, item in enumerate(created_items):
+				if idx < len(create_task_list):
+					task = create_task_list[idx]
+					new_id = item.get("record_id")
+					frappe.db.set_value("Lark Sync Queue", task.name, "status", "Synced")
+					if new_id:
+						try:
+							frappe.db.set_value(task.reference_doctype, task.reference_name, "lark_record_id", new_id, update_modified=False)
+						except Exception:
+							pass
+		else:
+			for task in create_task_list:
+				frappe.db.set_value("Lark Sync Queue", task.name, {"status": "Failed", "error_message": str(res)})
+
+	frappe.db.commit()
+
+@frappe.whitelist()
+def clear_old_sync_queue_records():
+	"""Clean up processed or old failed records from the Lark Sync Queue."""
+	from frappe.utils import add_days, now_datetime
+	
+	# Delete Synced records older than 1 day
+	cutoff_synced = add_days(now_datetime(), -1)
+	frappe.db.delete("Lark Sync Queue", {"status": "Synced", "modified": ["<", cutoff_synced]})
+	
+	# Delete Failed records older than 7 days
+	cutoff_failed = add_days(now_datetime(), -7)
+	frappe.db.delete("Lark Sync Queue", {"status": "Failed", "modified": ["<", cutoff_failed]})
+	
+	frappe.db.commit()
 
 
 

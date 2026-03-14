@@ -124,20 +124,28 @@ def create_custom_fields_if_missing():
         ]
     }
     
-    # Global Approval Field (Generic)
-    # We want to add this to any DocType that supports Lark Approvals
-    # For now, we add it to common ones or let it be added manually if preferred.
-    # The user asked if it's ready for production. Standardizing it for common Docs is good.
-    custom_fields["Purchase Order"] = [
-        {
-            "fieldname": "lark_approval_instance_id",
-            "label": "Lark Approval Instance ID",
-            "fieldtype": "Data",
-            "insert_after": "status",
-            "read_only": 1,
-            "hidden": 1
-        }
-    ]
-    
+    # Dynamic Lark Record ID for all synced DocTypes
+    try:
+        if frappe.db.table_exists("Lark Sync Document"):
+            synced_doctypes = frappe.get_all("Lark Sync Document", fields=["reference_doctype"])
+            for sync_doc in synced_doctypes:
+                dt = sync_doc.reference_doctype
+                if dt not in custom_fields:
+                    custom_fields[dt] = []
+                
+                # Check if it already has it or is in the list
+                if not any(f.get("fieldname") == "lark_record_id" for f in custom_fields[dt]):
+                    custom_fields[dt].append({
+                        "fieldname": "lark_record_id",
+                        "label": "Lark Record ID",
+                        "fieldtype": "Data",
+                        "insert_after": "status",
+                        "read_only": 1,
+                        "print_hide": 1,
+                        "hidden": 1
+                    })
+    except Exception:
+        pass
+
     create_custom_fields(custom_fields, ignore_validate=True)
     frappe.db.commit()
