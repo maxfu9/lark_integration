@@ -474,15 +474,15 @@
    {
     "fieldname": "notification_recipients",
     "fieldtype": "Table",
-    "label": "Role-Based Recipients",
-    "description": "Map ERPNext Roles to specific Lark Chat IDs for targeted notifications.",
+    "label": "Lark Chat Channels",
+    "description": "Map ERPNext Roles to specific Lark Chat IDs. These channels are used as targets for the triggers below.",
     "options": "Lark Notification Recipient"
    },
    {
     "fieldname": "notification_rules",
     "fieldtype": "Table",
-    "label": "Notification Rules",
-    "description": "Trigger Lark notifications based on Document events and conditions.",
+    "label": "Notification Triggers",
+    "description": "Configure precisely which Document actions and conditions should send alerts to which Chat Channels.",
     "options": "Lark Notification Rule"
    },
    {

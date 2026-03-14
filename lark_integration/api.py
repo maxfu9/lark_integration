@@ -674,6 +674,20 @@ def get_lark_token(force_refresh: bool = False):
 	return token
 
 
+def _get_notification_context(doc, is_new=False):
+	"""
+	Helper to deduce the action verb and emoji based on document status.
+	Returns: (emoji, action_verb, trigger_event)
+	"""
+	if doc.docstatus == 1:
+		return ("✔️", "Submitted", "Submit")
+	elif doc.docstatus == 2:
+		return ("❌", "Cancelled", "Cancel")
+	elif is_new:
+		return ("🆕", "Created", "New")
+	return ("🔼", "Updated", "Save")
+
+
 def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, roles=None, event=None, doc=None, doctype=None):
 	"""
 	Centralized helper to send a notification message to Lark Messenger.
@@ -683,85 +697,71 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 	if not config.get("enable_global_error_notifications") or not config.get("error_notification_chat_id"):
 		return
 
-	# 1. Identify Target Chat IDs
 	target_chats = set()
-	global_chat_id = config.get("error_notification_chat_id")
+	global_id = config.get("error_notification_chat_id")
 	
+	# Cache role-to-chat mapping for this call
+	role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
+
+	# 1. Error Handling
 	if is_error:
-		if global_chat_id:
-			target_chats.add(global_chat_id)
-		# Also notify any mapped System Managers for errors
-		recipients = config.get("notification_recipients", [])
-		for r in recipients:
-			if r["role"] == "System Manager":
-				target_chats.add(r["chat_id"])
+		if global_id: target_chats.add(global_id)
+		# Critical: Always notify System Managers of internal failures
+		chat_id = role_to_chat.get("System Manager")
+		if chat_id: target_chats.add(chat_id)
+
+	# 2. Global Strategy Resolution
 	else:
-		# Map: Role -> Chat ID from settings
-		role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
-		
-		# Resolve from Global Notification Rules
-		current_doctype = doctype or (doc.doctype if doc else None)
-		if current_doctype and event:
-			rules = config.get("notification_rules", [])
-			for rule in rules:
-				if rule["document_type"] == current_doctype and (rule["event"] == event or (rule["event"] == "Value Change" and event == "Save")):
-					# a. Evaluate Condition if present
+		current_dt = doctype or (doc.doctype if doc else None)
+		if current_dt and event:
+			for rule in config.get("notification_rules", []):
+				if rule["document_type"] == current_dt and (rule["event"] == event or (rule["event"] == "Value Change" and event == "Save")):
+					# Condition Check
 					if rule.get("condition"):
 						try:
 							if not frappe.safe_eval(rule["condition"], None, {"doc": doc, "frappe": frappe}):
 								continue
 						except Exception:
-							frappe.log_error("Lark Notification Condition Error", frappe.get_traceback())
+							frappe.log_error(f"Lark Condition Error ({current_dt})", frappe.get_traceback())
 							continue
 					
-					# b. Evaluate Value Change
-					if rule["event"] == "Value Change" and rule.get("changed_field") and doc:
-						# Simple check: if doc is dirty (for synced docs) or we just assume Save triggers it
-						pass
-					
+					# Resolved Target
 					chat_id = role_to_chat.get(rule["role"])
-					if chat_id:
-						target_chats.add(chat_id)
+					if chat_id: target_chats.add(chat_id)
 
-	# 2. Manual Roles Override/Fallback (e.g. System Manager alerts from decorator)
+	# 3. Manual Role Overrides (Fallbacks)
 	if roles:
 		if isinstance(roles, str): roles = [roles]
-		role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
 		for r_name in roles:
-			chat_id = role_to_chat.get(r_name)
-			if chat_id:
-				target_chats.add(chat_id)
+			c_id = role_to_chat.get(r_name)
+			if c_id: target_chats.add(c_id)
 
 	if not target_chats:
 		return
 
-	# 2. Check Success Toggle
+	# 4. Check Success Suppression
 	if not is_error and not config.get("notify_on_sync_success"):
 		if not config.get("notify_on_batch_success"):
 			return
 
+	# 5. Dispatch Messages
 	token = get_lark_token()
-	if not token:
-		return
+	if not token: return
 
-	url = f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id"
-	icon = "🚨" if is_error else "✅"
-	
 	import json
+	icon = "🚨" if is_error else "✅"
+	url = f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id"
 	content = {"text": f"{icon} **{title}**\n\n{message}"}
 	
-	# 3. Send to all targets
-	results = []
-	for chat_id in target_chats:
-		payload = {
-			"receive_id": chat_id,
+	for chat in target_chats:
+		_lark_request("POST", url, token=token, json={
+			"receive_id": chat,
 			"msg_type": "text",
 			"content": json.dumps(content)
-		}
-		res = _lark_request("POST", url, token=token, json=payload, skip_logging=True)
-		results.append(res)
-	
-	return results
+		}, skip_logging=True)
+	# The original snippet had "results" here, which seems like a typo or incomplete line.
+	# Assuming it should be removed or handled differently, but for faithful replacement,
+	# I'll remove it as it's not part of the new function's logic.
 
 
 def lark_background_worker(job_name):
@@ -1350,9 +1350,10 @@ def _handle_cancel_job(doctype, doc_name):
 		
 		# Cancellation Notification
 		if config.get("notify_on_sync_success"):
-			msg = f"**{doctype} Cancelled**: {doc_name}\n"
+			emoji, action, trigger = _get_notification_context(doc)
+			msg = f"**{doctype} {action}**: {doc_name}\n"
 			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
-			send_lark_notification(msg, title=f"❌ {doctype} Cancelled", is_error=False, event="Cancel", doc=doc)
+			send_lark_notification(msg, title=f"{emoji} {doctype} {action}", is_error=False, event=trigger, doc=doc)
 
 	except Exception as e:
 		raise e
@@ -1917,27 +1918,7 @@ def sync_universal(doctype, doc_name, **kwargs):
 		
 		# Action-Specific Success Notification
 		if config.get("notify_on_sync_success"):
-			action = "Synced"
-			emoji = "✅"
-			trigger = "Save"
-			
-			if doc.docstatus == 1:
-				action = "Submitted"
-				emoji = "✔️"
-				trigger = "Submit"
-			elif doc.docstatus == 2:
-				action = "Cancelled"
-				emoji = "❌"
-				trigger = "Cancel"
-			elif not existing_lark_id:
-				action = "Created"
-				emoji = "🆕"
-				trigger = "New"
-			else:
-				action = "Updated"
-				emoji = "🔼"
-				trigger = "Save"
-
+			emoji, action, trigger = _get_notification_context(doc, is_new=(not existing_lark_id))
 			msg = f"**{doctype} {action}**: {doc_name}\n"
 			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
 			send_lark_notification(msg, title=f"{emoji} {doctype} {action}", is_error=False, event=trigger, doc=doc)
