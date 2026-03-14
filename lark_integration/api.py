@@ -684,14 +684,20 @@ def process_lark_notifications(doc, event, method=None):
 	Mirrors native ERPNext Notification behavior.
 	Support for: New, Save, Submit, Cancel, Value Change, Method.
 	"""
-	filters = {"enabled": 1, "document_type": doc.doctype, "event": event}
-	if event == "Method" and method:
-		filters["method"] = method
+	# 1. Fetch Rules (Cached by DocType)
+	cache_key = f"lark_notifications:{doc.doctype}:{event}"
+	notifications = frappe.cache().get_value(cache_key)
+	
+	if notifications is None:
+		filters = {"enabled": 1, "document_type": doc.doctype, "event": event}
+		if event == "Method" and method:
+			filters["method"] = method
 
-	notifications = frappe.get_all("Lark Notification", 
-		filters=filters,
-		fields=["name", "subject", "message", "condition", "changed_field", "event"]
-	)
+		notifications = frappe.get_all("Lark Notification", 
+			filters=filters,
+			fields=["name", "subject", "message", "condition", "changed_field", "event"]
+		)
+		frappe.cache().set_value(cache_key, notifications, expires_in_sec=3600)
 	
 	if not notifications:
 		return
@@ -721,10 +727,18 @@ def process_lark_notifications(doc, event, method=None):
 				if db_val == doc.get(n.changed_field):
 					continue
 
-		# 3. Render Templates
+		# 3. Render Templates with Expanded Context
 		try:
-			subject = frappe.render_template(n.subject, {"doc": doc})
-			message = frappe.render_template(n.message, {"doc": doc})
+			context = {
+				"doc": doc,
+				"frappe": frappe,
+				"get_url": frappe.utils.get_url,
+				"format": frappe.utils.format,
+				"get_datetime": frappe.utils.get_datetime,
+				"today": frappe.utils.today
+			}
+			subject = frappe.render_template(n.subject, context)
+			message = frappe.render_template(n.message, context)
 		except Exception:
 			frappe.log_error(f"Lark Notification Template Error: {n.name}", frappe.get_traceback())
 			continue
@@ -827,6 +841,7 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 
 	chats = set(target_chats) if target_chats else set()
 	role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
+	sm_chat = role_to_chat.get("System Manager")
 	
 	# 1. Resolve Roles
 	if roles:
@@ -840,7 +855,6 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 		global_id = config.get("error_notification_chat_id")
 		if global_id: chats.add(global_id)
 		# Fallback: Notify System Managers
-		sm_chat = role_to_chat.get("System Manager")
 		if sm_chat: chats.add(sm_chat)
 
 	if not chats:
