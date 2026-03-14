@@ -11,6 +11,19 @@ frappe.ui.form.on("Lark Integration Settings", {
 			</div>
 		`;
 		frm.set_df_property("auth_instructions", "options", auth_html);
+		
+		frm.add_custom_button(__("Sync Lark IDs"), () => {
+			frappe.call({
+				method: "lark_integration.api.trigger_user_id_sync",
+				freeze: true,
+				freeze_message: __("Matching ERPNext users with Lark..."),
+				callback: (r) => {
+					if (r.message && r.message.status === "success") {
+						frappe.msgprint(__("Successfully matched {0} users.", [r.message.matched_count]));
+					}
+				}
+			});
+		}, __("Integration"));
 
 		// ToDo Webhook Instructions
 		if (frm.doc.todo_sync_method === "Webhook") {

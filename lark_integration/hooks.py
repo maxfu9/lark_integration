@@ -16,6 +16,10 @@ doc_events = {
         "on_submit": "lark_integration.api.enqueue_journal_entry_sync",
         "on_cancel": "lark_integration.api.enqueue_journal_entry_sync"
     },
+    "Purchase Order": {
+        "on_update": "lark_integration.api.create_lark_approval_instance",
+        "on_submit": "lark_integration.api.create_lark_approval_instance"
+    },
     "File": {
         "on_update": "lark_integration.api.handle_file_attach",
         "on_trash": "lark_integration.api.handle_file_delete"

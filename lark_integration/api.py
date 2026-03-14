@@ -2487,6 +2487,114 @@ def create_lark_task_list(doc_name):
 	return {"status": "error", "message": "Failed to create task list in Lark."}
 
 
+@frappe.whitelist()
+def sync_lark_user_ids():
+	"""Fetch all users from Lark and match with ERPNext users by email."""
+	token = get_lark_token()
+	if not token:
+		frappe.throw("Failed to get Lark access token.")
+
+	url = f"{LARK_BASE_URL}/contact/v3/users"
+	matched_count = 0
+	
+	# Fetch users (handling pagination)
+	page_token = ""
+	while True:
+		res = _lark_request("GET", url, token=token, params={"page_size": 100, "page_token": page_token})
+		if not res or "data" not in res or "items" not in res["data"]:
+			break
+			
+		items = res["data"]["items"]
+		for item in items:
+			email = item.get("email")
+			lark_user_id = item.get("user_id")
+			
+			if email and lark_user_id:
+				# Find ERPNext user with this email
+				erp_user = frappe.db.get_value("User", {"email": email}, "name")
+				if erp_user:
+					frappe.db.set_value("User", erp_user, "lark_user_id", lark_user_id)
+					matched_count += 1
+		
+		page_token = res["data"].get("page_token")
+		if not page_token:
+			break
+			
+	return {"status": "success", "matched_count": matched_count}
+
+
+@frappe.whitelist()
+def trigger_user_id_sync():
+	"""Whitelisted wrapper to trigger sync from UI."""
+	return sync_lark_user_ids()
+
+
+def create_lark_approval_instance(doc, method=None):
+	"""Trigger a Lark Approval instance when a PO requires approval."""
+	if doc.doctype != "Purchase Order":
+		return
+
+	# Only trigger for 'Pending' state or specific custom logic
+	# For prototype, we'll check a custom flag or workflow state
+	if doc.workflow_state != "Pending Approval":
+		return
+
+	token = get_lark_token()
+	if not token:
+		return
+
+	# Find current/next approver
+	# This usually depends on ERPNext Workflow settings
+	# For prototype, we'll try to find any 'Workflow Action' relevant users
+	approver_email = frappe.db.get_value("Workflow Action", {"reference_name": doc.name, "status": "Open"}, "next_user")
+	if not approver_email:
+		# Fallback to the 'Approver' field if it exists
+		approver_email = getattr(doc, "approver", None)
+
+	if not approver_email:
+		return
+
+	lark_approver_id = frappe.db.get_value("User", approver_email, "lark_user_id")
+	if not lark_approver_id:
+		# Try fetching and syncing IDs first if not found
+		sync_lark_user_ids()
+		lark_approver_id = frappe.db.get_value("User", approver_email, "lark_user_id")
+
+	if not lark_approver_id:
+		frappe.msgprint(f"Could not find Lark User ID for approver {approver_email}. Please ensure they are synced.")
+		return
+
+	# Approval Definition Token (Must be configured in Lark with specific fields)
+	# FOR PROTOTYPE: You need to create an Approval in Lark and paste its code here
+	approval_code = frappe.db.get_single_value("Lark Integration Settings", "po_approval_code")
+	if not approval_code:
+		return
+
+	approval_url = f"{LARK_BASE_URL}/approval/v4/instances"
+	
+	# Mapping ERPNext fields to Lark Approval Form
+	form_data = [
+		{"id": "name", "type": "input", "value": doc.name},
+		{"id": "vendor", "type": "input", "value": doc.supplier},
+		{"id": "amount", "type": "input", "value": f"{doc.currency} {doc.grand_total}"},
+		{"id": "details", "type": "textarea", "value": f"Purchase Order from {doc.company}. Date: {doc.transaction_date}"},
+		{"id": "link", "type": "input", "value": get_erp_link(doc.doctype, doc.name)}
+	]
+
+	payload = {
+		"approval_code": approval_code,
+		"user_id": lark_approver_id, # The person who SUBMITS (usually doc owner)
+		"approver": [{"user_id": lark_approver_id}], # Direct approver
+		"form": json.dumps(form_data)
+	}
+
+	res = _lark_request("POST", approval_url, json=payload, token=token)
+	if res and "data" in res and "instance_code" in res["data"]:
+		instance_code = res["data"]["instance_code"]
+		doc.db_set("lark_approval_instance_id", instance_code)
+		frappe.msgprint(f"Lark Approval Instance Created: {instance_code}")
+
+
 def _sync_task_list_from_lark_guid(guid, token):
 	"""Fetch latest detail for a specific task list and update in ERPNext."""
 	if not guid or not token:
@@ -2869,6 +2977,29 @@ def _handle_lark_webhook_event(data):
 			list_name = frappe.db.get_value("Lark Task List", {"lark_list_guid": tasklist_guid}, "name")
 			if list_name:
 				frappe.delete_doc("Lark Task List", list_name, ignore_permissions=True)
+				frappe.db.commit()
+	
+	# --- APPROVAL EVENTS ---
+	elif event_type == "approval.instance.status_updated":
+		instance_code = event.get("instance_code")
+		status = event.get("status") # REJECTED, APPROVED, CANCELLED
+		
+		if instance_code and status:
+			# Find document by instance code
+			# For now, we only support Purchase Order as prototype
+			po_name = frappe.db.get_value("Purchase Order", {"lark_approval_instance_id": instance_code}, "name")
+			if po_name:
+				po = frappe.get_doc("Purchase Order", po_name)
+				if status == "APPROVED":
+					# Transition workflow
+					# This requires knowing the next action (e.g., 'Approve')
+					po.add_comment("Comment", "Approved via Lark")
+					# Simple status update for prototype if Workflow is not set up
+					po.db_set("status", "Approved")
+				elif status == "REJECTED":
+					po.add_comment("Comment", "Rejected via Lark")
+					po.db_set("status", "Rejected")
+				
 				frappe.db.commit()
 	
 
