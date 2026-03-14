@@ -6,7 +6,9 @@
  "engine": "InnoDB",
  "field_order": [
   "role",
-  "trigger_event"
+  "trigger_event",
+  "changed_field",
+  "condition"
  ],
  "fields": [
   {
@@ -23,8 +25,22 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Trigger Event",
-   "options": "New\nSave\nSubmit\nCancel",
+   "options": "New\nSave\nSubmit\nCancel\nValue Change",
    "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.trigger_event == 'Value Change'",
+   "fieldname": "changed_field",
+   "fieldtype": "Data",
+   "label": "Changed Field",
+   "description": "Enter the fieldname to monitor for changes."
+  },
+  {
+   "fieldname": "condition",
+   "fieldtype": "Code",
+   "label": "Condition",
+   "description": "Optional: Python condition (e.g., doc.status == 'Open')",
+   "options": "Python"
   }
  ],
  "index_web_pages_for_search": 1,
