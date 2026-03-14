@@ -995,8 +995,8 @@ def sync_doc_attachments_to_lark_drive(doc, token: str, config: dict):
 
 
 def handle_file_delete(doc, method=None):
-	"""Hook for File on_trash: enqueues background deletion if user has permission."""
-	if not frappe.has_permission("Lark Drive File", "delete"):
+	"""Hook for File on_trash: enqueues background deletion if user has native delete permission."""
+	if not frappe.has_permission("File", "delete", doc):
 		return
 
 	links = frappe.get_all(
@@ -2086,12 +2086,23 @@ def pull_lark_tasks(publish_progress=False):
 				except Exception:
 					pass
 
+			# Resolve Owner from Lark Assignee to respect native ERPNext permissions
+			owner = None
+			members = item.get("members", [])
+			if members:
+				# Find the primary assignee
+				assignee_id = next((m["id"] for m in members if m.get("role") == "assignee"), None)
+				if assignee_id:
+					owner = frappe.db.get_value("User", {"lark_user_id": assignee_id}, "name")
+
 			# Create new ToDo
 			todo = frappe.get_doc({
 				"doctype": "ToDo",
 				"description": summary,
 				"lark_task_guid": guid,
 				"status": "Closed" if item.get("completed_at") not in (None, "0", 0) else "Open",
+				"owner": owner or frappe.session.user,
+				"assigned_by": owner or frappe.session.user,
 				"date": due_date,
 				"lark_due_time": due_time
 			})
@@ -2387,8 +2398,26 @@ def pull_lark_calendar_events(publish_progress=False):
 					frappe.db.set_value("Event", event_name, "status", "Closed")
 					synced_total += 1
 				continue
+			
+			# Resolve Owner to respect native ERPNext permissions
+			event_owner = target.get("user") or target.get("owner") or frappe.session.user
 
 			if not event_name:
+				# CREATE new Event
+				lark_start = int(item["start_time"].get("timestamp", 0))
+				lark_end = int(item["end_time"].get("timestamp", 0))
+				event = frappe.get_doc({
+					"doctype": "Event",
+					"subject": item.get("summary") or "(No Subject)",
+					"starts_on": get_datetime(lark_start),
+					"ends_on": get_datetime(lark_end),
+					"lark_event_id": event_id,
+					"owner": event_owner,
+					"event_type": "Private"
+				})
+				event._sync_from_lark = True
+				event.insert(ignore_permissions=True)
+				synced_total += 1
 				continue
 			
 			event = frappe.get_doc("Event", event_name)
