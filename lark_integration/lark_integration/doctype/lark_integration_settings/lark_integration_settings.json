@@ -1,0 +1,441 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-02-22 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "tab_integration",
+  "enabled",
+  "section_break_auth",
+  "auth_instructions",
+  "app_id",
+  "app_secret",
+  "column_break_auth",
+  "last_auth_success",
+  "section_break_runtime",
+  "mapping_note",
+  "section_break_runtime_fields",
+  "column_break_runtime",
+  "enable_api_logging",
+  "request_timeout",
+  "tab_lark_drive",
+  "drive_upload_enabled",
+  "drive_folder_token",
+  "replace_erpnext_files_after_upload",
+  "tab_backup",
+  "backup_enabled",
+  "backup_frequency",
+  "backup_interval_hours",
+  "backup_time",
+  "backup_weekday",
+  "backup_site",
+  "backup_files",
+  "backup_limit",
+  "backup_lark_folder",
+  "column_break_backup",
+  "send_email_on_success",
+  "notify_on_backup_failure",
+  "backup_notification_emails",
+  "last_backup_on",
+  "last_backup_status",
+  "last_backup_error",
+  "last_backup_size",
+  "last_backup_duration",
+  "backup_progress",
+  "tab_todo_sync",
+  "todo_sync_enabled",
+  "todo_sync_method",
+  "todo_sync_interval",
+  "column_break_todo",
+  "sync_todo_references",
+  "todo_priority_mapping",
+  "default_reminder_offset",
+  "last_todo_sync_on",
+  "section_break_todo_webhook",
+  "webhook_instruction",
+  "tab_calendar_sync",
+  "calendar_sync_enabled",
+  "calendar_sync_method",
+  "calendar_sync_interval",
+  "column_break_calendar",
+  "last_calendar_sync_on",
+  "section_break_calendar_webhook",
+  "calendar_webhook_instruction"
+ ],
+ "fields": [
+  {
+   "fieldname": "tab_integration",
+   "fieldtype": "Tab Break",
+   "label": "Integration"
+  },
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enable Integration",
+   "description": "Master toggle to enable or disable all Lark integration features."
+  },
+  {
+   "fieldname": "section_break_auth",
+   "fieldtype": "Section Break",
+   "label": "Authentication"
+  },
+  {
+   "fieldname": "auth_instructions",
+   "fieldtype": "HTML",
+   "label": "Setup Instructions"
+  },
+  {
+   "fieldname": "app_id",
+   "fieldtype": "Data",
+   "label": "Lark App ID",
+   "description": "The Unique ID of your Lark App from the Lark Developer Console."
+  },
+  {
+   "fieldname": "app_secret",
+   "fieldtype": "Password",
+   "label": "Lark App Secret",
+   "description": "The Secret Key for your Lark App, used for secure authentication."
+  },
+  {
+   "fieldname": "column_break_auth",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_auth_success",
+   "fieldtype": "Datetime",
+   "label": "Last Successful Auth",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_runtime",
+   "fieldtype": "Section Break",
+   "label": "Runtime"
+  },
+  {
+   "fieldname": "mapping_note",
+   "fieldtype": "HTML",
+   "label": "Sync Mapping",
+   "options": "<div style='padding: 10px; background-color: var(--bg-light-gray); border-radius: 4px; border-left: 4px solid var(--blue-500);'>Configure table IDs and sync scope in <a href='/app/lark-sync-document' style='font-weight: bold; text-decoration: underline;'>Lark Sync Document</a>.</div>"
+  },
+  {
+   "fieldname": "section_break_runtime_fields",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_runtime",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_api_logging",
+   "fieldtype": "Check",
+   "label": "Enable API Logging",
+   "description": "Records all Lark API requests and responses in 'Lark API Log' for debugging and audit purposes."
+  },
+  {
+   "default": "20",
+   "fieldname": "request_timeout",
+   "fieldtype": "Int",
+   "label": "Request Timeout (Seconds)",
+   "description": "Maximum seconds to wait for a response from Lark before timing out. Default is 20 seconds."
+  },
+  {
+   "fieldname": "tab_lark_drive",
+   "fieldtype": "Tab Break",
+   "label": "Lark Drive"
+  },
+  {
+   "default": "0",
+   "fieldname": "drive_upload_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Drive Uploads",
+   "description": "Automatically upload ERPNext document attachments to your Lark Drive."
+  },
+  {
+   "fieldname": "drive_folder_token",
+   "fieldtype": "Data",
+   "label": "Target Folder Token",
+   "description": "The token of the Lark Drive folder where attachments will be stored."
+  },
+  {
+   "default": "1",
+   "fieldname": "replace_erpnext_files_after_upload",
+   "fieldtype": "Check",
+   "label": "Delete Local Files After Upload",
+   "description": "Save ERPNext server space by deleting local file content once successfully uploaded to Lark."
+  },
+  {
+   "fieldname": "tab_backup",
+   "fieldtype": "Tab Break",
+   "label": "Backup"
+  },
+  {
+   "default": "0",
+   "fieldname": "backup_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Automated Backup",
+   "description": "Periodically upload ERPNext database content and personal files to Lark."
+  },
+  {
+   "default": "Daily",
+   "fieldname": "backup_frequency",
+   "fieldtype": "Select",
+   "label": "Schedule Type",
+   "description": "Choose between Hourly, Daily, or Weekly execution.",
+   "options": "Hourly\nDaily\nWeekly"
+  },
+  {
+   "default": "24",
+   "depends_on": "eval:doc.backup_frequency == 'Hourly'",
+   "fieldname": "backup_interval_hours",
+   "fieldtype": "Int",
+   "label": "Backup Interval (Hours)"
+  },
+  {
+   "depends_on": "eval:['Daily', 'Weekly'].includes(doc.backup_frequency)",
+   "fieldname": "backup_time",
+   "fieldtype": "Time",
+   "label": "Backup Time (Daily/Weekly)"
+  },
+  {
+   "default": "Sunday",
+   "depends_on": "eval:doc.backup_frequency == 'Weekly'",
+   "fieldname": "backup_weekday",
+   "fieldtype": "Select",
+   "label": "Backup Weekday (Weekly)",
+   "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday"
+  },
+  {
+   "fieldname": "backup_site",
+   "fieldtype": "Data",
+   "label": "Target Site",
+   "description": "Leave blank to backup the current site. Use this for multi-tenant setups."
+  },
+  {
+   "default": "0",
+   "fieldname": "backup_files",
+   "fieldtype": "Check",
+   "label": "Include Site Files",
+   "description": "If enabled, also backups your public and private file attachments."
+  },
+  {
+   "default": "5",
+   "fieldname": "backup_limit",
+   "fieldtype": "Int",
+   "label": "Retention Limit (Number of Backups)"
+  },
+  {
+   "fieldname": "backup_lark_folder",
+   "fieldtype": "Data",
+   "label": "Lark Backup Folder Token",
+   "description": "The token of the folder where backup archives will be uploaded."
+  },
+  {
+   "fieldname": "column_break_backup",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "send_email_on_success",
+   "fieldtype": "Check",
+   "label": "Send Email for Successful Backup"
+  },
+  {
+   "default": "1",
+   "fieldname": "notify_on_backup_failure",
+   "fieldtype": "Check",
+   "label": "Notify On Backup Failure"
+  },
+  {
+   "fieldname": "backup_notification_emails",
+   "fieldtype": "Small Text",
+   "label": "Send Notifications To (comma separated)"
+  },
+  {
+   "fieldname": "last_backup_on",
+   "fieldtype": "Datetime",
+   "label": "Last Backup On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_backup_status",
+   "fieldtype": "Data",
+   "label": "Last Backup Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_backup_error",
+   "fieldtype": "Small Text",
+   "label": "Last Backup Error",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_backup_size",
+   "fieldtype": "Data",
+   "label": "Total Backup Size",
+   "description": "Total size of the last uploaded backup run.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_backup_duration",
+   "fieldtype": "Data",
+   "label": "Backup Duration",
+   "description": "Time taken for the last complete backup and upload process.",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tab_todo_sync",
+   "fieldtype": "Tab Break",
+   "label": "ToDo Sync"
+  },
+  {
+   "default": "1",
+   "fieldname": "todo_sync_enabled",
+   "fieldtype": "Check",
+   "label": "Enable ToDo Sync",
+   "description": "Synchronize ERPNext ToDos with Lark Tasks."
+  },
+  {
+   "default": "Periodic",
+   "fieldname": "todo_sync_method",
+   "fieldtype": "Select",
+   "label": "ToDo Sync Method",
+   "description": "Choose between real-time Webhooks or Periodic background polling.",
+   "options": "Periodic\nWebhook"
+  },
+  {
+   "default": "15 Minutes",
+   "depends_on": "eval:doc.todo_sync_method == 'Periodic'",
+   "fieldname": "todo_sync_interval",
+   "fieldtype": "Select",
+   "label": "Polling Frequency",
+   "description": "How often the background sync should run for ToDos.",
+   "options": "5 Minutes\n15 Minutes\n30 Minutes\nHourly"
+  },
+  {
+   "fieldname": "column_break_todo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "sync_todo_references",
+   "fieldtype": "Check",
+   "label": "Include Links to ERPNext Documents in Lark"
+  },
+  {
+   "default": "0",
+   "fieldname": "todo_priority_mapping",
+   "fieldtype": "Check",
+   "label": "Sync Priority"
+  },
+  {
+   "default": "At due time",
+   "fieldname": "default_reminder_offset",
+   "fieldtype": "Select",
+   "label": "Default Reminder Offset",
+   "options": "At due time\n5 minutes before\n15 minutes before\n30 minutes before\n1 hour before\n2 hours before\n1 day before\n2 days before\n1 week before"
+  },
+  {
+   "fieldname": "last_todo_sync_on",
+   "fieldtype": "Datetime",
+   "label": "Last Task Sync On",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.todo_sync_method == 'Webhook'",
+   "fieldname": "section_break_todo_webhook",
+   "fieldtype": "Section Break",
+   "label": "Lark ToDo Webhook Setup"
+  },
+  {
+   "depends_on": "eval:doc.todo_sync_method == 'Webhook'",
+   "fieldname": "webhook_instruction",
+   "fieldtype": "HTML",
+   "label": "Webhook Instructions"
+  },
+  {
+   "fieldname": "tab_calendar_sync",
+   "fieldtype": "Tab Break",
+   "label": "Calendar Sync"
+  },
+  {
+   "default": "0",
+   "fieldname": "calendar_sync_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Calendar Sync",
+   "description": "Synchronize ERPNext Events with Lark Calendar."
+  },
+  {
+   "default": "Periodic",
+   "fieldname": "calendar_sync_method",
+   "fieldtype": "Select",
+   "label": "Calendar Sync Method",
+   "description": "Choose between real-time Webhooks or Periodic background polling.",
+   "options": "Periodic\nWebhook"
+  },
+  {
+   "default": "15 Minutes",
+   "depends_on": "eval:doc.calendar_sync_method == 'Periodic'",
+   "fieldname": "calendar_sync_interval",
+   "fieldtype": "Select",
+   "label": "Polling Frequency",
+   "description": "How often the background sync should run for Calendar events.",
+   "options": "5 Minutes\n15 Minutes\n30 Minutes\nHourly"
+  },
+  {
+   "fieldname": "column_break_calendar",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_calendar_sync_on",
+   "fieldtype": "Datetime",
+   "label": "Last Calendar Sync On",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.calendar_sync_method == 'Webhook'",
+   "fieldname": "section_break_calendar_webhook",
+   "fieldtype": "Section Break",
+   "label": "Lark Calendar Webhook Setup"
+  },
+  {
+   "depends_on": "eval:doc.calendar_sync_method == 'Webhook'",
+   "fieldname": "calendar_webhook_instruction",
+   "fieldtype": "HTML",
+   "label": "Webhook Instructions"
+  },
+  {
+   "fieldname": "backup_progress",
+   "fieldtype": "HTML",
+   "label": "Backup Progress"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-13 20:45:00.000000",
+ "modified_by": "Administrator",
+ "module": "Lark Integration",
+ "name": "Lark Integration Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

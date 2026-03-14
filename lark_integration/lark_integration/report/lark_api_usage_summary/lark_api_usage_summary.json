@@ -1,0 +1,53 @@
+{
+ "add_total_row": 1,
+ "columns": [
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Reference DocType",
+   "options": "DocType",
+   "width": 150
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference Name",
+   "options": "reference_doctype",
+   "width": 150
+  },
+  {
+   "fieldname": "total_calls",
+   "fieldtype": "Int",
+   "label": "Total Calls",
+   "width": 100
+  },
+  {
+   "fieldname": "success_calls",
+   "fieldtype": "Int",
+   "label": "Success",
+   "width": 80
+  },
+  {
+   "fieldname": "failed_calls",
+   "fieldtype": "Int",
+   "label": "Failed",
+   "width": 80
+  }
+ ],
+ "creation": "2026-03-14 02:15:00.000000",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "idx": 0,
+ "is_standard": "Yes",
+ "modified": "2026-03-14 02:25:00.000000",
+ "modified_by": "Administrator",
+ "module": "Lark Integration",
+ "name": "Lark API Usage Summary",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "query": "SELECT \n    COALESCE(reference_doctype, 'System / Auth') as `reference_doctype`,\n    COALESCE(reference_name, 'Global') as `reference_name`,\n    COUNT(*) as `total_calls`,\n    SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as `success_calls`,\n    SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as `failed_calls`\nFROM `tabLark API Log` \nGROUP BY reference_doctype, reference_name \nORDER BY COUNT(*) DESC",
+ "ref_doctype": "Lark API Log",
+ "report_name": "Lark API Usage Summary",
+ "report_type": "Query Report"
+}

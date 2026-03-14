@@ -1,0 +1,16 @@
+{
+ "doctype": "Dashboard",
+ "name": "Lark API Dashboard",
+ "module": "Lark Integration",
+ "charts": [
+  {
+   "chart": "Lark API Calls per Day",
+   "width": "Full"
+  },
+  {
+   "chart": "Lark API Status Breakdown",
+   "width": "Half"
+  }
+ ],
+ "cards": []
+}
