@@ -117,9 +117,8 @@
   {
    "depends_on": "eval:doc.attach_print == 1",
    "fieldname": "print_format",
-   "fieldtype": "Link",
-   "label": "Print Format",
-   "options": "Print Format"
+   "fieldtype": "Select",
+   "label": "Print Format"
   },
   {
    "fieldname": "sb_content",
