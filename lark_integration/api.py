@@ -2312,6 +2312,32 @@ def _delete_lark_event_job(event_id, calendar_id):
 	_lark_request("DELETE", delete_url, token=token)
 
 
+def _sync_lark_calendars_with_erp(token):
+	"""Syncs Lark Calendars to ERPNext Lark Calendar records for all users."""
+	users = frappe.get_all("User", filters={"lark_user_id": ("!=", "")}, fields=["name", "lark_user_id"])
+	for u in users:
+		lark_id = u.lark_user_id
+		# Check if already linked
+		if frappe.db.exists("Lark Calendar", {"lark_calendar_id": lark_id}) or frappe.db.exists("Lark Calendar", {"owner": u.name}):
+			continue
+		
+		# Fetch calendar details
+		url = f"{LARK_BASE_URL}/calendar/v4/calendars/{lark_id}"
+		res = _lark_request("GET", url, token=token)
+		if res and res.get("data", {}).get("calendar"):
+			cal = res["data"]["calendar"]
+			try:
+				frappe.get_doc({
+					"doctype": "Lark Calendar",
+					"calendar_name": cal.get("summary") or f"Primary ({u.name})",
+					"lark_calendar_id": lark_id,
+					"owner": u.name,
+					"is_primary": 1
+				}).insert(ignore_permissions=True)
+			except Exception:
+				pass
+
+
 @frappe.whitelist()
 def pull_lark_calendar_events(publish_progress=False):
 	"""Scheduled task to pull updates from Lark Calendars back to ERPNext Event."""
@@ -2325,6 +2351,12 @@ def pull_lark_calendar_events(publish_progress=False):
 	token = get_lark_token()
 	if not token:
 		return
+
+	# 0. Sync Calendar List to ERPNext to ensure correct ownership
+	try:
+		_sync_lark_calendars_with_erp(token)
+	except Exception:
+		pass
 
 	# 1. Identify all mapped calendars in ERPNext
 	# This includes both primary user calendars and custom shared calendars
@@ -2825,9 +2857,13 @@ def _sync_lark_task_lists_with_erp(token):
 	lark_guid_map = {item.get("guid"): item for item in lark_items if item.get("guid")}
 
 	# --- Handle NEW lists (in Lark but not in ERPNext) ---
-	current_lark_id = frappe.db.get_value("User", frappe.session.user, "lark_user_id")
 	for guid, item in lark_guid_map.items():
 		name = item.get("name") or guid
+		creator_id = item.get("creator_id")
+		owner = None
+		if creator_id:
+			owner = frappe.db.get_value("User", {"lark_user_id": creator_id}, "name")
+
 		existing = frappe.db.get_value("Lark Task List", {"lark_list_guid": guid}, "name")
 		if not existing:
 			# Create a new Lark Task List record in ERPNext
@@ -2836,9 +2872,12 @@ def _sync_lark_task_lists_with_erp(token):
 					"doctype": "Lark Task List",
 					"list_name": name,
 					"lark_list_guid": guid,
+					"owner": owner or frappe.session.user
 				}).insert(ignore_permissions=True)
-				# Add current user as editor for visibility
-				if current_lark_id:
+				
+				# Add current user as editor for visibility if they are the one syncing
+				current_lark_id = frappe.db.get_value("User", frappe.session.user, "lark_user_id")
+				if current_lark_id and current_lark_id != creator_id:
 					_lark_request("POST", f"{url}/{guid}/add_members", token=token, json={
 						"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
 					}, params={"user_id_type": "user_id"})
