@@ -75,6 +75,12 @@ To enable **Real-Time** sync from Lark back to ERPNext:
 - **Deep Integration**: Links to ERPNext documents are embedded directly into Lark Tasks and Calendar events.
 - **Video Meeting Support**: Create and join Lark Meetings directly from the ERPNext Event form.
 
+#### 📋 Task List Management
+Lark Tasks are organized into different Lists. This integration allows you to specify exactly which Lark Task List an ERPNext ToDo should belong to.
+- **Lark Task List DocType**: Manages the mapping between ERPNext and Lark's list structure (stores List Name and Token).
+- **Fetch Task Lists**: Use the **Fetch Task Lists from Lark** button in the **Lark Integration Settings** (ToDo Sync tab) to automatically pull all your available lists into ERPNext.
+- **Custom Allocation**: When creating a ToDo, you can select which **Lark Task List** to sync to. If left blank, it defaults to your primary task list in Lark.
+
 ---
 
 ## 📊 4. Monitoring & Diagnostics
