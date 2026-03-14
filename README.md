@@ -1,112 +1,97 @@
 # Lark Integration for ERPNext
 
-A comprehensive two-way synchronization suite connecting ERPNext with Lark (Feishu). Supports Bitable, Drive, Tasks (ToDo), Calendar, and Automated Backups.
+A professional, high-performance two-way synchronization suite connecting ERPNext with Lark (Feishu). This integration enables seamless data flow between your ERP and Lark's Bitable, Drive, Tasks (ToDo), and Calendar, while also providing secure automated offsite backups.
 
 ---
 
-## 1. Core Integration Settings
-Located in **Lark Integration Settings**.
+## 🚀 1. Installation
 
-### Authentication
-- **Enabled**: Global master switch for all integration features.
-- **App ID**: Your Lark Application ID (from Lark Developer Console).
-- **App Secret**: Your Lark App Secret.
+Install the app using the standard Frappe Bench CLI:
+
+```bash
+# Get the app
+bench get-app https://github.com/maxfu9/lark_integration
+
+# Install on your site
+bench --site [your-site-name] install-app lark_integration
+
+# Build assets
+bench build --app lark_integration
+
+# Run migrations
+bench --site [your-site-name] migrate
+```
 
 ---
 
-## 2. Lark Side Configuration
-Before configuring ERPNext, you must set up your application in the [Lark Developer Console](https://open.larksuite.com/app).
+## ⚙️ 2. Lark Configuration (Developer Console)
 
-### 1. Obtain Credentials
-1. Log in to the console and select your app.
-2. Go to **Credentials & Basic Information** to find your **App ID** and **App Secret**.
+Before configuring ERPNext, set up your app in the [Lark Developer Console](https://open.larksuite.com/app).
 
-### 2. Required API Permissions
-In the left sidebar, navigate to **Permission Administration** and enable the following scopes:
+### 1. Credentials
+- Navigate to **Credentials & Basic Information**.
+- Copy your **App ID** and **App Secret**.
 
-| Suite | Scopes Required | Why? |
+### 2. Permisison Administration
+Enable the following API scopes to allow ERPNext to communicate with Lark:
+
+| Category | Scopes Required | Feature |
 | :--- | :--- | :--- |
-| **Bitable** | `bitable:app` | Sync ERPNext records to Bitable. |
-| **Drive** | `drive:drive` | Upload/Remove file attachments. |
-| **Tasks** | `task:task:write`, `task:task:read` | Two-way ToDo synchronization. |
-| **Calendar** | `calendar:calendar`, `calendar:calendar:readonly` | Two-way Event synchronization. |
-| **Contact** | `contact:user.email:readonly`, `contact:contact.base:readonly` | Identify users for sync. |
+| **Bitable** | `bitable:app` | Sync ERPNext records to Bitable cells. |
+| **Drive** | `drive:drive` | Upload attachments & back up your site. |
+| **Tasks** | `task:task:write`, `task:task:read` | Bidirectional ToDo sync. |
+| **Calendar** | `calendar:calendar`, `calendar:calendar:readonly` | Bidirectional Event sync. |
+| **Contact** | `contact:user.email:readonly` | User identification. |
 
-### 3. Events & Webhooks (Optional)
-To enable real-time updates from Lark back to ERPNext (e.g., when a Task is completed in Lark), you should configure the **Event Subscriptions** in the console and point them to your ERPNext site's API hook.
-
----
-
-## 3. Lark Drive & File Management
-Sync ERPNext file attachments directly to Lark Drive folders.
-
-- **Sync ERP PDF Attachments**: If enabled, whenever an ERP document (Invoice, Order, etc.) is submitted, the system automatically generates the PDF and uploads it to the linked Lark Bitable.
-- **Request Timeout**: Maximum seconds to wait for Lark API responses (Default: 20s).
-
-- **Upload To Lark Drive**: Transfers all local ERPNext attachments to Lark Drive automatically.
-- **Lark Drive Folder Token**: The destination folder ID in Lark. (Find this in the Lark Drive URL; it's the alphanumeric string after `folder/`).
-- **Remove ERPNext File Content**: If enabled, the system deletes the file from the ERPNext server *after* successful upload to Lark, replacing it with a "Lark Proxy" link. This saves local disk space while keeping files accessible.
-- **Hierarchical Storage**: Files are automatically organized into `DocType/Year/Month` subfolders within Lark Drive.
+### 3. Event Subscriptions (Optional)
+To enable **Real-Time** sync from Lark back to ERPNext:
+1.  Go to **Event Subscriptions**.
+2.  Set **Request URL** to: `https://[your-site-url]/api/method/lark_integration.api.lark_webhook`
+3.  Add events:
+    - `task.task.updated_v2`, `task.task.deleted_v2` (for ToDos)
+    - `calendar.calendar_event.updated_v4`, `calendar.calendar_event.deleted_v4` (for Events)
 
 ---
 
-## 3. Bitable Document Sync
-Define custom mappings in **Lark Sync Document** to push ERPNext data to Lark Bitables.
+## 🛠️ 3. Integration Features
 
-### Main Config
-- **Document Type**: The ERPNext DocType to sync (e.g., Sales Invoice).
-- **Lark Key Field**: The specific field in Lark that holds the ERPNext Name (e.g., `INV-2024-001`). This is used to find and update existing records.
-- **Lark App Token**: The unique ID of the Lark Bitable app.
-- **Main Table ID**: The ID of the primary table in the Bitable.
-- **Items Table ID**: (Optional) The ID of a separate table for child rows (e.g., Invoice Items).
+### 🔐 Security & Identity
+- **Native Security Patterns**: App secrets are protected with visibility toggles and real-time complexity meters.
+- **Handshake Optimization**: Technical authentication noise is suppressed from your logs, keeping your history clear.
 
-### Advanced Mapping
-- **Sync Child Table**: If enabled, child table rows (like Items or Taxes) are pushed to the `Items Table ID`.
-- **Attachment Sync Mode**:
-    - `Both`: Uploads to both Bitable and Lark Drive.
-    - `Base Only`: Syncs only to the Bitable's attachment field.
-    - `Drive Only`: Syncs only to Lark Drive.
-    - `None`: Disables attachment sync for this DocType.
-- **Item Summary**: Generates a beautiful formatted text summary (e.g., `- Item A x 5`) in the main Lark table, allowing you to see item details without following record links.
+### 📼 Automated Offsite Backups
+- **Background Processing**: Manual and scheduled backups run in the background (RQ Jobs) to prevent timeouts.
+- **Real-Time Progress**: Watch your backup progress with an inline progress bar showing bench output, upload status, and retention cleanup.
+- **Granular Scheduling**: Configure Hourly, Daily (at a specific time), or Weekly backups.
+- **Smart Retention**: Automatically keep only the last `N` backups on Lark Drive.
 
----
+### 📝 Bitable & Document Sync
+- **Universal Handler**: Map *any* ERPNext DocType to a Bitable using the **Lark Sync Document** doctype.
+- **Item Summaries**: Automatically generate beautiful, readable item summaries inside Lark main tables.
+- **Attachment Proxy**: Move heavy local file attachments to Lark Drive and replace them with links in ERPNext to save server disk space.
 
-## 4. ToDo & Task Sync
-Two-way synchronization between ERPNext ToDos and Lark Tasks.
-
-- **Enable ToDo Sync**: Master toggle for task synchronization.
-- **Sync ToDo References**: Adds a direct link (URL) in the Lark Task pointing back to the specific ERPNext document it refers to.
-- **Sync Priority**: Maps ERPNext priorities (Low, Medium, High) to Lark's priority levels.
-- **Real-time**: ERPNext changes reflect instantly in Lark. Lark changes are pulled hourly or via the manual **Sync Tasks Now** button.
+### 📅 Two-Way Sync (ToDo & Calendar)
+- **Periodic or Webhook**: Choose between polling every 5-60 minutes or instant real-time updates via Webhooks.
+- **Deep Integration**: Links to ERPNext documents are embedded directly into Lark Tasks and Calendar events.
+- **Video Meeting Support**: Create and join Lark Meetings directly from the ERPNext Event form.
 
 ---
 
-## 5. Calendar & Event Sync
-Advanced two-way synchronization for Events and Meetings.
+## 📊 4. Monitoring & Diagnostics
 
-- **Enable Calendar Sync**: Master toggle for event synchronization.
-- **Multiple Calendars**: Create **Lark Calendar** records to manage different shared or private calendars.
-- **Add Lark Meeting**: A checkbox on the Event form that instantly generates a Lark Meeting (video call) link.
-- **Join Meeting Button**: Adds a "Join Lark Meeting" button directly in ERPNext for easy access to video calls.
-- **Attendee Sync**: ERPNext participants are automatically invited as attendees in Lark.
-- **Recurrence Support**: Syncs Daily, Weekly, and Monthly repeating event series.
-- **Incremental Sync**: Uses "Sync Tokens" to pull only *changed* events, ensuring high performance.
+Keep your integration healthy with built-in monitoring tools:
+
+- **Lark API Log**: A detailed audit trail of every data-carrying request. Technical handshake noise is automatically filtered out.
+- **Usage Dashboard**: Visual charts showing API status breakdowns and call trends over time.
+- **Backup Metrics**: Track the duration, size, and success status of every backup run.
+- **Activity Log Silence**: Automated status updates do not clutter your document timeline; only manual changes are logged.
 
 ---
 
-## 6. Automated Backup
-Securely backup your entire ERPNext suite to Lark Drive.
-
-- **Enable Automated Backup**: Global switch for backups.
-- **Frequency**: Choose between `Hourly`, `Daily`, or `Weekly`.
-- **Retention Limit**: Automatically deletes old backups from Lark to save space (e.g., keep the last 5 backups).
-- **Backup Site**: Specify which site to backup (defaults to the current site).
-- **Backup Files**: Optionally include the `public` and `private` file directories in the backup archive.
-- **Notifications**: Configure emails to receive success reports or failure alerts.
-- **Take Backup Now**: Manual button for immediate ad-hoc backups.
+## 🧹 5. Maintenance
+- **Log Cleanup**: API logs are kept for reference but can be cleared periodically using a standard Frappe auto-cleanup policy.
+- **Site Updates**: When updating the app, always run `bench migrate` to apply any new DocType schemas.
 
 ---
 
-## 7. Troubleshooting
-- **Last Sync Status**: Every module (Backup, ToDo, Calendar) has a "Last Sync On" and "Status" field to help identify issues.
-- **Error Logs**: Check the standard ERPNext **Error Log** list for detailed tracebacks if a sync fails.
+*Built with ❤️ for ERPNext. Ensure your developers have shared your Lark App with your user account within the Lark suite before first sync.*
