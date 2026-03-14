@@ -735,6 +735,11 @@ def clear_and_sync_items(table_id, parent_field_name, doc_name, item_records, to
 		return None
 
 	items = search_res.get("data", {}).get("items", [])
+	
+	# Optimization: If both remote and local are empty, skip.
+	if not items and not item_records:
+		return {"status": "skipped", "message": "No records to sync"}
+
 	if items:
 		record_ids = [item.get("record_id") for item in items if item.get("record_id")]
 		if record_ids:
@@ -932,45 +937,60 @@ def sync_doc_attachments_to_lark_drive(doc, token: str, config: dict):
 	files = frappe.get_all(
 		"File",
 		filters={"attached_to_doctype": doc.doctype, "attached_to_name": doc.name, "is_folder": 0},
-		fields=["name"],
+		fields=["name", "file_name", "file_url", "creation", "is_private", "file_size"],
 	)
 	for row in files:
 		try:
-			file_doc = frappe.get_doc("File", row.name)
-			if _is_managed_lark_proxy(file_doc.file_url):
+			if _is_managed_lark_proxy(row.file_url):
 				continue
-			# Skip external http URLs but allow local absolute URLs (e.g. http://localhost:8000/private/...)
-			# that are leftovers from previous failed proxy attempts — those need to be reprocessed.
-			file_url_str = str(file_doc.file_url or "")
+			
+			# Optimization: Reuse existing tokens if available
+			existing_proxy = frappe.db.get_value("Lark Drive File", {"source_file": row.name}, ["lark_file_token", "bitable_token", "lark_folder_token"], as_dict=1)
+			
+			file_url_str = str(row.file_url or "")
 			if file_url_str.startswith("http"):
-				# Allow local absolute private file URLs (broken from old code)
 				import re as _re
+				# Allow local absolute private/public file URLs
 				if not _re.match(r'https?://[^/]*/private/files/', file_url_str) and not _re.match(r'https?://[^/]*/files/', file_url_str):
 					continue
 
-			content = file_doc.get_content()
-			if not content:
+			# We only need content if we are going to upload something new
+			content = None
+			needs_bitable = sync_mode in ("Base Only", "Both") and (not existing_proxy or not existing_proxy.bitable_token)
+			needs_drive = drive_enabled and sync_mode in ("Drive Only", "Both") and (not existing_proxy or not existing_proxy.lark_file_token or existing_proxy.lark_file_token.startswith("base_only_"))
+			
+			if needs_bitable or needs_drive:
+				file_doc = frappe.get_doc("File", row.name)
+				content = file_doc.get_content()
+			
+			if not content and not existing_proxy:
 				continue
 
 			b_token = None
 			if sync_mode in ("Base Only", "Both"):
-				b_token = upload_attachment_to_bitable(file_doc.file_name, content, token, mapping["app_token"], reference_doctype=doc.doctype, reference_name=doc.name)
+				if existing_proxy and existing_proxy.bitable_token:
+					b_token = existing_proxy.bitable_token
+				else:
+					b_token = upload_attachment_to_bitable(row.file_name, content, token, mapping["app_token"], reference_doctype=doc.doctype, reference_name=doc.name)
 
 			drive_enabled = config.get("drive_upload_enabled") and config.get("drive_folder_token")
 			
 			lark_file_token = None
 			effective_folder_token = None
 			if drive_enabled and sync_mode in ("Drive Only", "Both"):
-				# Organization: use DocType/Year/Month subfolders
-				creation = get_datetime(doc.creation or frappe.utils.now_datetime())
-				path_parts = [
-					doc.doctype,
-					str(creation.year),
-					creation.strftime("%B") # e.g., "March"
-				]
-				effective_folder_token = _get_or_create_nested_folder(path_parts, config["drive_folder_token"], token)
-				
-				lark_file_token = upload_to_lark_drive(file_doc.file_name, content, token, effective_folder_token, reference_doctype=doc.doctype, reference_name=doc.name)
+				if existing_proxy and existing_proxy.lark_file_token and not existing_proxy.lark_file_token.startswith("base_only_"):
+					lark_file_token = existing_proxy.lark_file_token
+					effective_folder_token = existing_proxy.lark_folder_token
+				else:
+					# Organization: use DocType/Year/Month subfolders
+					creation = get_datetime(doc.creation or frappe.utils.now_datetime())
+					path_parts = [
+						doc.doctype,
+						str(creation.year),
+						creation.strftime("%B")
+					]
+					effective_folder_token = _get_or_create_nested_folder(path_parts, config["drive_folder_token"], token)
+					lark_file_token = upload_to_lark_drive(row.file_name, content, token, effective_folder_token, reference_doctype=doc.doctype, reference_name=doc.name)
 			
 			if not lark_file_token and b_token and sync_mode == "Base Only":
 				# Generate dummy token to bypass constraints for Base Only where no drive token exists
@@ -1548,6 +1568,11 @@ def _upload_single_file_to_drive(file_name: str):
 			mapping = _get_sync_mapping(file_doc.attached_to_doctype)
 			if mapping:
 				sync_mode = mapping.get("attachment_sync_mode", "Both")
+		
+		# Optimization: Check if already managed
+		existing_proxy = frappe.db.get_value("Lark Drive File", {"source_file": file_name}, ["lark_file_token", "bitable_token"], as_dict=1)
+		if existing_proxy and existing_proxy.lark_file_token:
+			return
 
 		if sync_mode == "None":
 			return
