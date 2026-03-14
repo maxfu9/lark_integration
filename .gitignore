@@ -4,7 +4,7 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
-*.json
+
 check_*.py
 debug_*.py
 test_*.py
