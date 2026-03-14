@@ -474,7 +474,7 @@ def _sync_child_tables(doc, mapping: dict, token: str, app_token: str):
 	return False
 
 
-def _lark_request(method: str, url: str, token: str | None = None, **kwargs):
+def _lark_request(method: str, url: str, token: str | None = None, skip_logging: bool = False, **kwargs):
 	headers = dict(kwargs.pop("headers", {}) or {})
 	if token:
 		headers["Authorization"] = f"Bearer {token}"
@@ -541,28 +541,31 @@ def _lark_request(method: str, url: str, token: str | None = None, **kwargs):
 			except Exception:
 				detail["body"] = None
 			
-			_log_api_error(f"{method} {url} failed after {attempt+1} attempts: {exc}", detail)
-			
-			if response is not None:
-				_log_api_call(method, url, kwargs, response, ref_doctype, ref_name)
+			if not skip_logging:
+				_log_api_error(f"{method} {url} failed after {attempt+1} attempts: {exc}", detail)
+				
+				if response is not None:
+					_log_api_call(method, url, kwargs, response, ref_doctype, ref_name)
 
 			return None
 
 	# Success - Log if enabled
-	if response is not None:
+	if response is not None and not skip_logging:
 		_log_api_call(method, url, kwargs, response, ref_doctype, ref_name)
 
 	try:
 		payload = response.json()
 	except ValueError:
-		_log_api_error(f"{method} {url} returned non-JSON response")
+		if not skip_logging:
+			_log_api_error(f"{method} {url} returned non-JSON response")
 		return None
 
 	if payload.get("code") not in (None, 0):
 		# Only log API level logic errors if it's truly an unexpected result
-		log_verbosity = frappe.conf.get("lark_log_verbosity", "errors")
-		if log_verbosity == "all" or payload.get("code") not in (1061054,):
-			_log_api_error(f"{method} {url} returned Lark code={payload.get('code')}", payload)
+		if not skip_logging:
+			log_verbosity = frappe.conf.get("lark_log_verbosity", "errors")
+			if log_verbosity == "all" or payload.get("code") not in (1061054,):
+				_log_api_error(f"{method} {url} returned Lark code={payload.get('code')}", payload)
 		return None
 
 	return payload
@@ -634,7 +637,7 @@ def get_lark_token(force_refresh: bool = False):
 			return cached_token
 
 	auth_url = f"{LARK_BASE_URL}/auth/v3/tenant_access_token/internal"
-	payload = _lark_request("POST", auth_url, json={"app_id": config["app_id"], "app_secret": config["app_secret"]})
+	payload = _lark_request("POST", auth_url, json={"app_id": config["app_id"], "app_secret": config["app_secret"]}, skip_logging=True)
 	if not payload:
 		return None
 
