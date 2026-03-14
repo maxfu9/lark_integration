@@ -695,7 +695,7 @@ def process_lark_notifications(doc, event, method=None):
 
 		notifications = frappe.get_all("Lark Notification", 
 			filters=filters,
-			fields=["name", "subject", "message", "condition", "changed_field", "event"]
+			fields=["name", "subject", "message", "condition", "changed_field", "event", "attach_print", "print_format"]
 		)
 		frappe.cache().set_value(cache_key, notifications, expires_in_sec=3600)
 	
@@ -757,8 +757,20 @@ def process_lark_notifications(doc, event, method=None):
 		if not target_chats:
 			continue
 
-		# 5. Send
-		send_lark_notification(message, title=subject, target_chats=list(target_chats))
+		# 5. Handle PDF Attachment
+		file_key = None
+		if n.attach_print:
+			try:
+				html = frappe.get_print(doc.doctype, doc.name, n.print_format)
+				pdf_content = frappe.utils.pdf.get_pdf(html)
+				if pdf_content:
+					token = _get_tenant_token()
+					file_key = upload_file_to_lark_messenger(f"{doc.name}.pdf", pdf_content, token)
+			except Exception:
+				frappe.log_error(f"Lark Notification PDF Error: {n.name}", frappe.get_traceback())
+
+		# 6. Send
+		send_lark_notification(message, title=subject, target_chats=list(target_chats), file_key=file_key, file_name=f"{doc.name}.pdf")
 
 
 def trigger_lark_notification(doc, method):
@@ -830,13 +842,17 @@ def lark_scheduled_notifications():
 				send_lark_notification(message, title=subject, target_chats=list(chats))
 
 
-def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None):
+def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None, file_key=None, file_name=None):
 	"""
 	Low-level sender to Lark Messenger.
-	Supports direct chat IDs, ERPNext roles, or global error routing.
+	Supports standard text/post messages and optional file attachments.
 	"""
 	config = _get_config()
-	if not config.get("enable_global_error_notifications") or not config.get("error_notification_chat_id"):
+	if not config.get("enabled"):
+		return
+
+	token = get_lark_token()
+	if not token:
 		return
 
 	chats = set(target_chats) if target_chats else set()
@@ -860,20 +876,46 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 	if not chats:
 		return
 
-	token = get_lark_token()
-	if not token: return
+	# 3. Dispatch Content
+	for chat_id in chats:
+		# Text Message
+		payload = {
+			"receive_id": chat_id,
+			"msg_type": "post",
+			"content": json.dumps({
+				"en_us": {
+					"title": str(title),
+					"content": [[
+						{"tag": "text", "text": str(message)}
+					]]
+				}
+			})
+		}
+		_lark_request("POST", f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id", token=token, json=payload)
+		
+		# Optional File Message
+		if file_key:
+			file_payload = {
+				"receive_id": chat_id,
+				"msg_type": "file",
+				"content": json.dumps({"file_key": file_key})
+			}
+			_lark_request("POST", f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id", token=token, json=file_payload)
 
-	import json
-	icon = "🚨" if is_error else "✅"
-	url = f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id"
-	content = {"text": f"{icon} **{title}**\n\n{message}"}
+
+def upload_file_to_lark_messenger(file_name, content, token):
+	"""
+	Upload binary content to Lark Messenger media servers.
+	Returns 'file_key' for use in 'file' type messages.
+	"""
+	url = f"{LARK_BASE_URL}/im/v1/files"
+	params = {"file_type": "pdf", "file_name": file_name}
+	files = {"file": (file_name, content, "application/pdf")}
 	
-	for chat in chats:
-		_lark_request("POST", url, token=token, json={
-			"receive_id": chat,
-			"msg_type": "text",
-			"content": json.dumps(content)
-		}, skip_logging=True)
+	payload = _lark_request("POST", url, token=token, data=params, files=files, timeout=60)
+	if payload:
+		return payload.get("data", {}).get("file_key")
+	return None
 
 
 def lark_background_worker(job_name):

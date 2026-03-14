@@ -14,6 +14,8 @@
   "date_changed",
   "days_before_after",
   "condition",
+  "attach_print",
+  "print_format",
   "subject",
   "message",
   "recipients"
@@ -80,6 +82,18 @@
    "label": "Condition",
    "options": "Python",
    "description": "Optional: Python condition (e.g., doc.status == 'Open')"
+  },
+  {
+   "fieldname": "attach_print",
+   "fieldtype": "Check",
+   "label": "Attach Print"
+  },
+  {
+   "depends_on": "eval:doc.attach_print == 1",
+   "fieldname": "print_format",
+   "fieldtype": "Link",
+   "label": "Print Format",
+   "options": "Print Format"
   },
   {
    "fieldname": "subject",

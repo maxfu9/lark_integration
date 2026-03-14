@@ -23,9 +23,19 @@ frappe.ui.form.on('Lark Notification', {
 					.sort((a, b) => a.label.localeCompare(b.label));
 				
 				frm.set_df_property('date_changed', 'options', [""].concat(date_fields));
+
+				// 3. Print Formats for the chosen DocType
+				frappe.db.get_list('Print Format', {
+					filters: { doc_type: frm.doc.document_type },
+					fields: ['name']
+				}).then(formats => {
+					let options = [""].concat(formats.map(f => f.name));
+					frm.set_df_property('print_format', 'options', options);
+				});
 				
 				frm.refresh_field('changed_field');
 				frm.refresh_field('date_changed');
+				frm.refresh_field('print_format');
 			});
 		}
 	}
