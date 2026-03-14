@@ -50,7 +50,7 @@
   {
    "depends_on": "eval:doc.event == 'Value Change'",
    "fieldname": "changed_field",
-   "fieldtype": "Data",
+   "fieldtype": "Select",
    "label": "Changed Field",
    "description": "Trigger when this field is modified."
   },
@@ -64,7 +64,7 @@
   {
    "depends_on": "eval:['Days Before', 'Days After'].includes(doc.event)",
    "fieldname": "date_changed",
-   "fieldtype": "Data",
+   "fieldtype": "Select",
    "label": "Date Field",
    "description": "Field to monitor for date-based trigger."
   },
