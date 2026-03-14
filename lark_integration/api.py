@@ -3090,31 +3090,61 @@ def _handle_lark_webhook_event(data):
 			
 		instance_code = event.get("instance_code")
 		status = event.get("status") # REJECTED, APPROVED, CANCELLED
+		# Operator who performed the action in Lark
+		lark_user_id = event.get("status_refre") or event.get("operator_id") or event.get("approver_id")
 		
 		if instance_code and status:
 			# Search dynamically for any document that has this instance code
-			# We check common Doctypes that utilize workflow sync
-			mappings = frappe.get_all("Lark Approval Mapping", filters={"enabled": 1}, fields=["document_type"])
+			mappings = frappe.get_all("Lark Approval Mapping", filters={"enabled": 1}, fields=["document_type", "approve_action", "reject_action"])
 			for m in mappings:
 				dt = m.document_type
 				doc_name = frappe.db.get_value(dt, {"lark_approval_instance_id": instance_code}, "name")
 				if doc_name:
-					doc = frappe.get_doc(dt, doc_name)
-					doc.add_comment("Comment", f"Status updated in Lark: {status}")
+					# 1. Resolve ERPNext User from Lark operator
+					erp_user = frappe.db.get_value("User", {"lark_user_id": lark_user_id}, "name") if lark_user_id else None
 					
-					if status == "APPROVED":
-						doc.add_comment("Comment", f"✅ Approved via Lark by {lark_user_id or 'Approver'}")
-						if hasattr(doc, "workflow_state"):
-							# Note: Transitions should Ideally use doc.apply_action('Approve')
-							# but for a generic bridge, we force the status for the prototype.
-							doc.db_set("status", "Approved")
-					elif status == "REJECTED":
-						doc.add_comment("Comment", f"❌ Rejected via Lark by {lark_user_id or 'Approver'}")
-						doc.db_set("status", "Rejected")
-					elif status == "CANCELLED":
-						doc.add_comment("Comment", "⚠️ Approval request was cancelled in Lark.")
+					# 2. Switch session safely to enforce permissions
+					original_user = frappe.session.user
+					if erp_user:
+						frappe.set_user(erp_user)
 					
-					frappe.db.commit()
+					try:
+						doc = frappe.get_doc(dt, doc_name)
+						doc.add_comment("Comment", f"Status updated in Lark: {status}")
+						
+						if status == "APPROVED":
+							doc.add_comment("Comment", f"✅ Approved via Lark by {lark_user_id or 'Approver'}")
+							if m.approve_action and hasattr(doc, "workflow_state"):
+								# Enforce native workflow permission!
+								doc.apply_action(m.approve_action)
+							else:
+								# Fallback for simple status sync if no workflow action is mapped
+								if doc.has_permission("write"):
+									doc.db_set("status", "Approved")
+								else:
+									doc.add_comment("Comment", "⚠️ Could not update status: User does not have write permission in ERPNext.")
+						
+						elif status == "REJECTED":
+							doc.add_comment("Comment", f"❌ Rejected via Lark by {lark_user_id or 'Approver'}")
+							if m.reject_action and hasattr(doc, "workflow_state"):
+								doc.apply_action(m.reject_action)
+							else:
+								if doc.has_permission("write"):
+									doc.db_set("status", "Rejected")
+								else:
+									doc.add_comment("Comment", "⚠️ Could not update status: User does not have write permission in ERPNext.")
+						
+						elif status == "CANCELLED":
+							doc.add_comment("Comment", "⚠️ Approval request was cancelled in Lark.")
+						
+						frappe.db.commit()
+					except Exception as e:
+						frappe.log_error(title="Lark Approval Callback Sync Fail", message=frappe.get_traceback())
+						# Log the error back to the document for visibility
+						frappe.get_doc(dt, doc_name).add_comment("Comment", f"❌ Lark Sync Error: {str(e)}")
+					finally:
+						# 3. Always restore the original session user
+						frappe.set_user(original_user)
 					break
 	
 

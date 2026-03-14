@@ -9,6 +9,8 @@
     "enabled",
     "document_type",
     "trigger_workflow_state",
+    "approve_action",
+    "reject_action",
     "approval_code",
     "field_mappings"
   ],
@@ -38,6 +40,18 @@
       "label": "Trigger Workflow State",
       "reqd": 1,
       "description": "The exact name of the Workflow State that triggers the Lark Approval (e.g., 'Pending Approval')."
+    },
+    {
+      "fieldname": "approve_action",
+      "fieldtype": "Data",
+      "label": "ERPNext Approve Action",
+      "description": "The Workflow Action to trigger when approved in Lark (e.g., 'Approve')."
+    },
+    {
+      "fieldname": "reject_action",
+      "fieldtype": "Data",
+      "label": "ERPNext Reject Action",
+      "description": "The Workflow Action to trigger when rejected in Lark (e.g., 'Reject')."
     },
     {
       "fieldname": "approval_code",
