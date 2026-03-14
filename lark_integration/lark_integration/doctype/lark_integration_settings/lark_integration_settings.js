@@ -19,7 +19,14 @@ frappe.ui.form.on("Lark Integration Settings", {
 				freeze_message: __("Matching ERPNext users with Lark..."),
 				callback: (r) => {
 					if (r.message && r.message.status === "success") {
-						frappe.msgprint(__("Successfully matched {0} users.", [r.message.matched_count]));
+						let msg = __("User Sync Complete.");
+						if (r.message.matched_count > 0) {
+							msg += `<br><b>${__("Newly Matched")}:</b> ${r.message.matched_count}`;
+						}
+						if (r.message.already_synced > 0) {
+							msg += `<br><b>${__("Already Synced")}:</b> ${r.message.already_synced}`;
+						}
+						frappe.msgprint(msg);
 					}
 				}
 			});

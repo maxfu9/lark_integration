@@ -2489,13 +2489,14 @@ def create_lark_task_list(doc_name):
 
 @frappe.whitelist()
 def sync_lark_user_ids():
-	"""Fetch all users from Lark and match with ERPNext users by email."""
+	"""Fetch all users from Lark and match with ERPNext users by email (case-insensitive)."""
 	token = get_lark_token()
 	if not token:
 		frappe.throw("Failed to get Lark access token.")
 
 	url = f"{LARK_BASE_URL}/contact/v3/users"
 	matched_count = 0
+	already_synced = 0
 	
 	# Fetch users (handling pagination)
 	page_token = ""
@@ -2506,21 +2507,28 @@ def sync_lark_user_ids():
 			
 		items = res["data"]["items"]
 		for item in items:
-			email = item.get("email")
+			lark_email = (item.get("email") or "").lower()
 			lark_user_id = item.get("user_id")
 			
-			if email and lark_user_id:
-				# Find ERPNext user with this email
-				erp_user = frappe.db.get_value("User", {"email": email}, "name")
-				if erp_user:
-					frappe.db.set_value("User", erp_user, "lark_user_id", lark_user_id)
-					matched_count += 1
+			if lark_email and lark_user_id:
+				# Find ERPNext users with this email (case-insensitive search)
+				erp_users = frappe.db.get_all("User", filters={"email": ["like", lark_email]}, fields=["name", "lark_user_id"])
+				for u in erp_users:
+					if u.lark_user_id == lark_user_id:
+						already_synced += 1
+					else:
+						frappe.db.set_value("User", u.name, "lark_user_id", lark_user_id)
+						matched_count += 1
 		
 		page_token = res["data"].get("page_token")
 		if not page_token:
 			break
 			
-	return {"status": "success", "matched_count": matched_count}
+	return {
+		"status": "success", 
+		"matched_count": matched_count,
+		"already_synced": already_synced
+	}
 
 
 @frappe.whitelist()
@@ -2531,10 +2539,23 @@ def trigger_user_id_sync():
 
 def trigger_lark_approval_globally(doc, method=None):
 	"""Generic handler to trigger a Lark Approval based on Lark Approval Mapping."""
+	# Enqueue to background to prevent UI lag
+	frappe.enqueue(
+		"lark_integration.api._process_lark_approval_trigger",
+		doctype=doc.doctype,
+		docname=doc.name,
+		now=frappe.flags.in_test
+	)
+
+
+def _process_lark_approval_trigger(doctype, docname):
+	"""Actual worker to push approval request to Lark."""
 	# Safety check for migration
 	if not _doctype_available("Lark Approval Mapping"):
 		return
 
+	doc = frappe.get_doc(doctype, docname)
+	
 	# 1. Look for mapping for this doctype
 	mapping = frappe.get_all("Lark Approval Mapping", filters={"document_type": doc.doctype, "enabled": 1}, fields=["*"])
 	if not mapping:
@@ -2546,48 +2567,47 @@ def trigger_lark_approval_globally(doc, method=None):
 	if doc.workflow_state != mapping.trigger_workflow_state:
 		return
 
-	# 3. Prevent duplicate triggers if already sent
-	if getattr(doc, "lark_approval_instance_id", None):
+	# 3. Check if we have tracking field
+	meta = frappe.get_meta(doc.doctype)
+	if not meta.has_field("lark_approval_instance_id"):
+		return
+
+	# 4. Prevent duplicate triggers
+	if doc.lark_approval_instance_id:
 		return
 
 	token = get_lark_token()
 	if not token:
 		return
 
-	# 4. Resolve Approver
+	# 5. Resolve Approver
 	next_user = frappe.db.get_value("Workflow Action", {"reference_name": doc.name, "status": "Open"}, "next_user")
 	if not next_user:
-		# Fallback to current session user's manager or similar?
-		# For now, if no workflow action is found, we might need a dedicated 'approver' field mapping
 		next_user = getattr(doc, "approver", None) or doc.owner
 
 	lark_approver_id = frappe.db.get_value("User", next_user, "lark_user_id")
 	if not lark_approver_id:
-		# Try forced sync once
+		# Silent sync attempt
 		sync_lark_user_ids()
 		lark_approver_id = frappe.db.get_value("User", next_user, "lark_user_id")
 
 	if not lark_approver_id:
+		doc.add_comment("Comment", f"Lark Approval Failed: Could not resolve Lark ID for approver {next_user}")
 		return
 
-	# 5. Build Form Data dynamically from mappings
+	# 6. Build Form Data dynamically
 	mappings = frappe.get_all("Lark Approval Field", filters={"parent": mapping.name}, fields=["*"])
 	form_data = []
 	for m in mappings:
 		val = getattr(doc, m.erpnext_field, "")
-		# Handle Link fields or Currency
-		if isinstance(val, (int, float)):
-			val = str(val)
-		
 		form_data.append({
 			"id": m.lark_field_id,
-			"type": "input", # Defaulting to input for simplicity
+			"type": "input",
 			"value": str(val)
 		})
 	
-	# Add a standard link back to ERPNext if not mapped
 	form_data.append({
-		"id": "erp_link", # This ID should be standard in Lark form if possible
+		"id": "erp_link",
 		"type": "input",
 		"value": get_erp_link(doc.doctype, doc.name)
 	})
@@ -2603,13 +2623,8 @@ def trigger_lark_approval_globally(doc, method=None):
 	res = _lark_request("POST", approval_url, json=payload, token=token)
 	if res and "data" in res and "instance_code" in res["data"]:
 		instance_code = res["data"]["instance_code"]
-		# Save instance ID to document
-		try:
-			doc.db_set("lark_approval_instance_id", instance_code)
-			doc.add_comment("Comment", f"Lark Approval Request Sent: {instance_code}")
-		except Exception:
-			# If field doesn't exist on this doctype, we might need to log it elsewhere
-			frappe.log_error(f"Failed to set instance ID for {doc.name}. Does field exist?")
+		doc.db_set("lark_approval_instance_id", instance_code)
+		doc.add_comment("Comment", f"Lark Approval Request Sent: {instance_code}")
 
 
 def _sync_task_list_from_lark_guid(guid, token):
@@ -2997,7 +3012,7 @@ def _handle_lark_webhook_event(data):
 				frappe.db.commit()
 	
 	# --- APPROVAL EVENTS ---
-	elif event_type == "approval.instance.status_updated":
+	elif event_type in ("approval.instance.status_updated", "approval.instance.status_updated_v4"):
 		# Safety check for migration
 		if not _doctype_available("Lark Approval Mapping"):
 			return
@@ -3017,15 +3032,16 @@ def _handle_lark_webhook_event(data):
 					doc.add_comment("Comment", f"Status updated in Lark: {status}")
 					
 					if status == "APPROVED":
-						# Advanced Step: If multiple approval actions exist, we might need a setting.
-						# For now, we update status or use db_set if field exists.
+						doc.add_comment("Comment", f"✅ Approved via Lark by {lark_user_id or 'Approver'}")
 						if hasattr(doc, "workflow_state"):
-							doc.add_comment("Info", "Approval verified via Lark.")
-							# Note: Transitioning state usually requires doc.apply_action()
-							# but for a generic bridge, a direct status or db_set is safer for a prototype.
+							# Note: Transitions should Ideally use doc.apply_action('Approve')
+							# but for a generic bridge, we force the status for the prototype.
 							doc.db_set("status", "Approved")
 					elif status == "REJECTED":
+						doc.add_comment("Comment", f"❌ Rejected via Lark by {lark_user_id or 'Approver'}")
 						doc.db_set("status", "Rejected")
+					elif status == "CANCELLED":
+						doc.add_comment("Comment", "⚠️ Approval request was cancelled in Lark.")
 					
 					frappe.db.commit()
 					break
