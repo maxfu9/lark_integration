@@ -42,6 +42,7 @@ Enable the following API scopes to allow ERPNext to communicate with Lark:
 | **Tasks** | `task:task:write`, `task:task:read` | Bidirectional ToDo sync. |
 | **Task Lists** | `task:tasklist:read`, `task:tag:read` | Fetch and sync Task Lists & Tags. |
 | **Calendar** | `calendar:calendar`, `calendar:calendar:readonly` | Bidirectional Event sync. |
+| **Approvals** | `approval:approval:read`, `approval:approval` | Universal Approval sync. |
 | **Contact** | `contact:user.email:readonly` | User identification. |
 
 ### 3. Event Subscriptions (Optional)
@@ -94,9 +95,24 @@ Keep your integration healthy with built-in monitoring tools:
 - **Backup Metrics**: Track the duration, size, and success status of every backup run.
 - **Activity Log Silence**: Automated status updates do not clutter your document timeline; only manual changes are logged.
 
+### 5. Global Approval Synchronization (All DocTypes)
+You can now connect **any** ERPNext Workflow to a Lark Approval form without further coding.
+
+1.  **Identity Backup**: Click the **Sync Lark IDs** button in settings. 
+    - This automatically matches ERPNext users with Lark users by email address.
+    - You can also manually add a Lark User ID in the **User** DocType.
+2.  **Create Mapping**: Go to **Lark Approval Mapping** and create a new record.
+    - **DocType**: Select any target (e.g., `Purchase Order` or `Leave Application`).
+    - **Workflow State**: Specify the name of the state that triggers the sync (e.g., `Pending Approval`).
+    - **Approval Code**: Paste your unique code from the Lark Approval Definition.
+3.  **Field Mappings**: In the child table, map ERPNext fieldnames to Lark Form IDs.
+    - *Example*: `grand_total` → `total_amount_id`.
+4.  **Automatic ID Tracking**: Ensure your target DocType has a field called `lark_approval_instance_id`. 
+    - *Note: This will be automatically added for standard DocTypes or can be added as a Custom Field.*
+
 ---
 
-## 🧹 5. Maintenance
+## 🧹 6. Maintenance
 - **Log Cleanup**: API logs are kept for reference but can be cleared periodically using a standard Frappe auto-cleanup policy.
 - **Site Updates**: When updating the app, always run `bench migrate` to apply any new DocType schemas.
 

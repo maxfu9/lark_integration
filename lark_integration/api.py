@@ -2529,70 +2529,87 @@ def trigger_user_id_sync():
 	return sync_lark_user_ids()
 
 
-def create_lark_approval_instance(doc, method=None):
-	"""Trigger a Lark Approval instance when a PO requires approval."""
-	if doc.doctype != "Purchase Order":
+def trigger_lark_approval_globally(doc, method=None):
+	"""Generic handler to trigger a Lark Approval based on Lark Approval Mapping."""
+	# Safety check for migration
+	if not _doctype_available("Lark Approval Mapping"):
 		return
 
-	# Only trigger for 'Pending' state or specific custom logic
-	# For prototype, we'll check a custom flag or workflow state
-	if doc.workflow_state != "Pending Approval":
+	# 1. Look for mapping for this doctype
+	mapping = frappe.get_all("Lark Approval Mapping", filters={"document_type": doc.doctype, "enabled": 1}, fields=["*"])
+	if not mapping:
+		return
+
+	mapping = mapping[0]
+	
+	# 2. Check workflow state
+	if doc.workflow_state != mapping.trigger_workflow_state:
+		return
+
+	# 3. Prevent duplicate triggers if already sent
+	if getattr(doc, "lark_approval_instance_id", None):
 		return
 
 	token = get_lark_token()
 	if not token:
 		return
 
-	# Find current/next approver
-	# This usually depends on ERPNext Workflow settings
-	# For prototype, we'll try to find any 'Workflow Action' relevant users
-	approver_email = frappe.db.get_value("Workflow Action", {"reference_name": doc.name, "status": "Open"}, "next_user")
-	if not approver_email:
-		# Fallback to the 'Approver' field if it exists
-		approver_email = getattr(doc, "approver", None)
+	# 4. Resolve Approver
+	next_user = frappe.db.get_value("Workflow Action", {"reference_name": doc.name, "status": "Open"}, "next_user")
+	if not next_user:
+		# Fallback to current session user's manager or similar?
+		# For now, if no workflow action is found, we might need a dedicated 'approver' field mapping
+		next_user = getattr(doc, "approver", None) or doc.owner
 
-	if not approver_email:
-		return
-
-	lark_approver_id = frappe.db.get_value("User", approver_email, "lark_user_id")
+	lark_approver_id = frappe.db.get_value("User", next_user, "lark_user_id")
 	if not lark_approver_id:
-		# Try fetching and syncing IDs first if not found
+		# Try forced sync once
 		sync_lark_user_ids()
-		lark_approver_id = frappe.db.get_value("User", approver_email, "lark_user_id")
+		lark_approver_id = frappe.db.get_value("User", next_user, "lark_user_id")
 
 	if not lark_approver_id:
-		frappe.msgprint(f"Could not find Lark User ID for approver {approver_email}. Please ensure they are synced.")
 		return
 
-	# Approval Definition Token (Must be configured in Lark with specific fields)
-	# FOR PROTOTYPE: You need to create an Approval in Lark and paste its code here
-	approval_code = frappe.db.get_single_value("Lark Integration Settings", "po_approval_code")
-	if not approval_code:
-		return
+	# 5. Build Form Data dynamically from mappings
+	mappings = frappe.get_all("Lark Approval Field", filters={"parent": mapping.name}, fields=["*"])
+	form_data = []
+	for m in mappings:
+		val = getattr(doc, m.erpnext_field, "")
+		# Handle Link fields or Currency
+		if isinstance(val, (int, float)):
+			val = str(val)
+		
+		form_data.append({
+			"id": m.lark_field_id,
+			"type": "input", # Defaulting to input for simplicity
+			"value": str(val)
+		})
+	
+	# Add a standard link back to ERPNext if not mapped
+	form_data.append({
+		"id": "erp_link", # This ID should be standard in Lark form if possible
+		"type": "input",
+		"value": get_erp_link(doc.doctype, doc.name)
+	})
 
 	approval_url = f"{LARK_BASE_URL}/approval/v4/instances"
-	
-	# Mapping ERPNext fields to Lark Approval Form
-	form_data = [
-		{"id": "name", "type": "input", "value": doc.name},
-		{"id": "vendor", "type": "input", "value": doc.supplier},
-		{"id": "amount", "type": "input", "value": f"{doc.currency} {doc.grand_total}"},
-		{"id": "details", "type": "textarea", "value": f"Purchase Order from {doc.company}. Date: {doc.transaction_date}"},
-		{"id": "link", "type": "input", "value": get_erp_link(doc.doctype, doc.name)}
-	]
-
 	payload = {
-		"approval_code": approval_code,
-		"user_id": lark_approver_id, # The person who SUBMITS (usually doc owner)
-		"approver": [{"user_id": lark_approver_id}], # Direct approver
+		"approval_code": mapping.approval_code,
+		"user_id": lark_approver_id,
+		"approver": [{"user_id": lark_approver_id}],
 		"form": json.dumps(form_data)
 	}
 
 	res = _lark_request("POST", approval_url, json=payload, token=token)
 	if res and "data" in res and "instance_code" in res["data"]:
 		instance_code = res["data"]["instance_code"]
-		doc.db_set("lark_approval_instance_id", instance_code)
-		frappe.msgprint(f"Lark Approval Instance Created: {instance_code}")
+		# Save instance ID to document
+		try:
+			doc.db_set("lark_approval_instance_id", instance_code)
+			doc.add_comment("Comment", f"Lark Approval Request Sent: {instance_code}")
+		except Exception:
+			# If field doesn't exist on this doctype, we might need to log it elsewhere
+			frappe.log_error(f"Failed to set instance ID for {doc.name}. Does field exist?")
 
 
 def _sync_task_list_from_lark_guid(guid, token):
@@ -2981,26 +2998,37 @@ def _handle_lark_webhook_event(data):
 	
 	# --- APPROVAL EVENTS ---
 	elif event_type == "approval.instance.status_updated":
+		# Safety check for migration
+		if not _doctype_available("Lark Approval Mapping"):
+			return
+			
 		instance_code = event.get("instance_code")
 		status = event.get("status") # REJECTED, APPROVED, CANCELLED
 		
 		if instance_code and status:
-			# Find document by instance code
-			# For now, we only support Purchase Order as prototype
-			po_name = frappe.db.get_value("Purchase Order", {"lark_approval_instance_id": instance_code}, "name")
-			if po_name:
-				po = frappe.get_doc("Purchase Order", po_name)
-				if status == "APPROVED":
-					# Transition workflow
-					# This requires knowing the next action (e.g., 'Approve')
-					po.add_comment("Comment", "Approved via Lark")
-					# Simple status update for prototype if Workflow is not set up
-					po.db_set("status", "Approved")
-				elif status == "REJECTED":
-					po.add_comment("Comment", "Rejected via Lark")
-					po.db_set("status", "Rejected")
-				
-				frappe.db.commit()
+			# Search dynamically for any document that has this instance code
+			# We check common Doctypes that utilize workflow sync
+			mappings = frappe.get_all("Lark Approval Mapping", filters={"enabled": 1}, fields=["document_type"])
+			for m in mappings:
+				dt = m.document_type
+				doc_name = frappe.db.get_value(dt, {"lark_approval_instance_id": instance_code}, "name")
+				if doc_name:
+					doc = frappe.get_doc(dt, doc_name)
+					doc.add_comment("Comment", f"Status updated in Lark: {status}")
+					
+					if status == "APPROVED":
+						# Advanced Step: If multiple approval actions exist, we might need a setting.
+						# For now, we update status or use db_set if field exists.
+						if hasattr(doc, "workflow_state"):
+							doc.add_comment("Info", "Approval verified via Lark.")
+							# Note: Transitioning state usually requires doc.apply_action()
+							# but for a generic bridge, a direct status or db_set is safer for a prototype.
+							doc.db_set("status", "Approved")
+					elif status == "REJECTED":
+						doc.db_set("status", "Rejected")
+					
+					frappe.db.commit()
+					break
 	
 
 	return {"status": "ignored"}

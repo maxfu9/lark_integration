@@ -7,18 +7,20 @@ app_license = "mit"
 
 doc_events = {
     "*": {
-        "on_update": "lark_integration.api.handle_universal_update",
-        "on_submit": "lark_integration.api.enqueue_universal_sync",
+        "on_update": [
+            "lark_integration.api.handle_universal_update",
+            "lark_integration.api.trigger_lark_approval_globally"
+        ],
+        "on_submit": [
+            "lark_integration.api.enqueue_universal_sync",
+            "lark_integration.api.trigger_lark_approval_globally"
+        ],
         "on_cancel": "lark_integration.api.handle_cancel",
         "on_update_after_submit": "lark_integration.api.enqueue_universal_sync"
     },
     "Journal Entry": {
         "on_submit": "lark_integration.api.enqueue_journal_entry_sync",
         "on_cancel": "lark_integration.api.enqueue_journal_entry_sync"
-    },
-    "Purchase Order": {
-        "on_update": "lark_integration.api.create_lark_approval_instance",
-        "on_submit": "lark_integration.api.create_lark_approval_instance"
     },
     "File": {
         "on_update": "lark_integration.api.handle_file_attach",
