@@ -1,7 +1,7 @@
 {
     "actions": [],
     "allow_rename": 1,
-    "autoname": "hash",
+    "autoname": "field:document_type",
     "creation": "2026-02-22 00:00:00.000000",
     "doctype": "DocType",
     "engine": "InnoDB",
