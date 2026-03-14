@@ -2487,6 +2487,44 @@ def create_lark_task_list(doc_name):
 	return {"status": "error", "message": "Failed to create task list in Lark."}
 
 
+def _sync_task_list_from_lark_guid(guid, token):
+	"""Fetch latest detail for a specific task list and update in ERPNext."""
+	if not guid or not token:
+		return
+		
+	url = f"{LARK_BASE_URL}/task/v2/tasklists/{guid}"
+	res = _lark_request("GET", url, token=token)
+	
+	if not res or "data" not in res or "tasklist" not in res.get("data", {}):
+		return
+
+	item = res["data"]["tasklist"]
+	name = item.get("name")
+	if not name:
+		return
+		
+	# Search by GUID first
+	existing = frappe.db.get_value("Lark Task List", {"lark_list_guid": guid}, "name")
+	if not existing:
+		# Check if a list with the same name exists without a GUID
+		if frappe.db.exists("Lark Task List", name):
+			doc = frappe.get_doc("Lark Task List", name)
+			if not doc.lark_list_guid:
+				doc.db_set("lark_list_guid", guid)
+		else:
+			# Truly new list
+			frappe.get_doc({
+				"doctype": "Lark Task List",
+				"list_name": name,
+				"lark_list_guid": guid,
+				"owner": frappe.session.user if frappe.session.user != "Guest" else "Administrator"
+			}).insert(ignore_permissions=True)
+	else:
+		doc = frappe.get_doc("Lark Task List", existing)
+		if doc.list_name != name:
+			doc.db_set("list_name", name)
+
+
 @frappe.whitelist()
 def fetch_lark_task_lists():
 	"""Fetch all task lists from Lark into ERPNext."""
@@ -2817,6 +2855,21 @@ def _handle_lark_webhook_event(data):
 			event_name = frappe.db.get_value("Event", {"lark_event_id": event_id}, "name")
 			if event_name:
 				frappe.delete_doc("Event", event_name, ignore_permissions=True)
+	
+	# --- TASK LIST EVENTS ---
+	elif event_type in ("task.tasklist.created_v2", "task.tasklist.updated_v2"):
+		tasklist_guid = event.get("tasklist_guid")
+		if tasklist_guid:
+			_sync_task_list_from_lark_guid(tasklist_guid, token)
+			frappe.db.commit()
+
+	elif event_type == "task.tasklist.deleted_v2":
+		tasklist_guid = event.get("tasklist_guid")
+		if tasklist_guid:
+			list_name = frappe.db.get_value("Lark Task List", {"lark_list_guid": tasklist_guid}, "name")
+			if list_name:
+				frappe.delete_doc("Lark Task List", list_name, ignore_permissions=True)
+				frappe.db.commit()
 	
 
 	return {"status": "ignored"}
