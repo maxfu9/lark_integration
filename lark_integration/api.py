@@ -123,9 +123,11 @@ def _get_config():
 		if settings.replace_erpnext_files_after_upload is not None:
 			config["replace_erpnext_files_after_upload"] = bool(settings.replace_erpnext_files_after_upload)
 
-		# Global Error Notifications
+		# Global Notifications
 		config["enable_global_error_notifications"] = bool(settings.enable_global_error_notifications)
 		config["error_notification_chat_id"] = settings.error_notification_chat_id or ""
+		config["notify_on_sync_success"] = bool(settings.notify_on_sync_success)
+		config["notify_on_batch_success"] = bool(settings.notify_on_batch_success)
 
 	if config["request_timeout"] <= 0:
 		config["request_timeout"] = DEFAULT_REQUEST_TIMEOUT
@@ -656,14 +658,19 @@ def get_lark_token(force_refresh: bool = False):
 	return token
 
 
-def send_lark_notification(message, title="ERPNext Lark Alert"):
+def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False):
 	"""
 	Centralized helper to send a notification message to Lark Messenger.
-	Requires 'error_notification_chat_id' to be set in Lark Integration Settings.
 	"""
 	config = _get_config()
 	if not config.get("enable_global_error_notifications") or not config.get("error_notification_chat_id"):
 		return
+
+	# If it's a success message but success notifications are disabled, skip
+	if not is_error and not config.get("notify_on_sync_success"):
+		# Check if it might be a batch success which has its own toggle
+		if not config.get("notify_on_batch_success"):
+			return
 
 	token = get_lark_token()
 	if not token:
@@ -671,9 +678,11 @@ def send_lark_notification(message, title="ERPNext Lark Alert"):
 
 	url = f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id"
 	
+	icon = "🚨" if is_error else "✅"
+	
 	# Rich text content
 	content = {
-		"text": f"**{title}**\n\n{message}"
+		"text": f"{icon} **{title}**\n\n{message}"
 	}
 	
 	import json
@@ -1729,6 +1738,13 @@ def _upload_single_file_to_drive(file_name: str):
 						"lark_folder_token": "",
 						"source_file": file_doc.name
 					}).insert(ignore_permissions=True)
+					frappe.db.commit()
+
+		# Drive Upload Success Notification
+		if config.get("notify_on_sync_success") and lark_file_token:
+			msg = f"**File Uploaded**: {file_doc.file_name}\n"
+			msg += f"📎 Attached to: {file_doc.attached_to_doctype} {file_doc.attached_to_name}"
+			send_lark_notification(msg, title="Lark Drive Upload Success", is_error=False)
 
 		# Sync Bitable to include the new attachment
 		if file_doc.attached_to_doctype and file_doc.attached_to_name:
@@ -1820,8 +1836,16 @@ def sync_universal(doctype, doc_name, **kwargs):
 					reference_doctype=doc.doctype,
 					reference_name=doc.name
 				)
-	except Exception:
-		frappe.log_error(title=f"Lark Universal Sync Fail: {doctype} {doc_name}", message=frappe.get_traceback())
+		
+		# Individual Sync Success Notification
+		if config.get("notify_on_sync_success"):
+			msg = f"**Document Synced**: {doctype} {doc_name}\n"
+			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
+			send_lark_notification(msg, title="Document Sync Success", is_error=False)
+
+	except Exception as e:
+		# Decorator lark_background_worker will handle the notification for unhandled exceptions
+		raise e
 
 
 # --- BULK SYNC LOGIC ---
@@ -3679,11 +3703,21 @@ def _process_lark_batch_chunk(app_token, table_id, chunk, token):
 							frappe.db.set_value(task.reference_doctype, task.reference_name, "lark_record_id", new_id, update_modified=False)
 						except Exception:
 							pass
-		else:
 			for task in create_task_list:
 				frappe.db.set_value("Lark Sync Queue", task.name, {"status": "Failed", "error_message": str(res)})
 
 	frappe.db.commit()
+
+	# Batch Success Notification
+	config = _get_config()
+	if config.get("notify_on_batch_success"):
+		total = len(records_to_update) + len(records_to_create)
+		if total > 0:
+			msg = f"**Batch Processed**: {total} records synchronized.\n"
+			msg += f"📁 Table ID: `{table_id}`\n"
+			msg += f"✅ Updates: {len(records_to_update)}\n"
+			msg += f"🆕 Creations: {len(records_to_create)}"
+			send_lark_notification(msg, title="Batch Sync Success", is_error=False)
 
 @frappe.whitelist()
 @lark_background_worker("Sync Queue Cleanup")

@@ -67,7 +67,9 @@
   "calendar_webhook_instruction",
   "tab_notifications",
   "enable_global_error_notifications",
-  "error_notification_chat_id"
+  "error_notification_chat_id",
+  "notify_on_sync_success",
+  "notify_on_batch_success"
  ],
  "fields": [
   {
@@ -446,15 +448,29 @@
    "label": "Enable Global Error Notifications",
    "description": "Send a Lark Messenger alert for any critical errors in background jobs (Syncs, Backups, etc.)."
   },
-  {
-   "depends_on": "eval:doc.enable_global_error_notifications",
-   "fieldname": "error_notification_chat_id",
-   "fieldtype": "Data",
-   "label": "Error Notification Chat ID",
-   "description": "The Lark Chat ID (or Open ID) where error alerts will be sent."
-  },
-  {
-   "fieldname": "backup_progress",
+   {
+    "depends_on": "eval:doc.enable_global_error_notifications",
+    "fieldname": "error_notification_chat_id",
+    "fieldtype": "Data",
+    "label": "Notification Chat ID",
+    "description": "The Lark Chat ID (or Open ID) where alerts will be sent."
+   },
+   {
+    "default": "0",
+    "fieldname": "notify_on_sync_success",
+    "fieldtype": "Check",
+    "label": "Notify on Individual Sync Success",
+    "description": "Send a notification every time a single document is successfully synced."
+   },
+   {
+    "default": "0",
+    "fieldname": "notify_on_batch_success",
+    "fieldtype": "Check",
+    "label": "Notify on Batch Sync Success",
+    "description": "Send a summary notification after a batch of records is successfully processed."
+   },
+   {
+    "fieldname": "backup_progress",
    "fieldtype": "HTML",
    "label": "Backup Progress"
   }
