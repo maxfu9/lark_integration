@@ -995,7 +995,10 @@ def sync_doc_attachments_to_lark_drive(doc, token: str, config: dict):
 
 
 def handle_file_delete(doc, method=None):
-	"""Hook for File on_trash: enqueues background deletion."""
+	"""Hook for File on_trash: enqueues background deletion if user has permission."""
+	if not frappe.has_permission("Lark Drive File", "delete"):
+		return
+
 	links = frappe.get_all(
 		"Lark Drive File",
 		filters={"source_file": doc.name},
