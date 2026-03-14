@@ -64,7 +64,10 @@
   "column_break_calendar",
   "last_calendar_sync_on",
   "section_break_calendar_webhook",
-  "calendar_webhook_instruction"
+  "calendar_webhook_instruction",
+  "tab_notifications",
+  "enable_global_error_notifications",
+  "error_notification_chat_id"
  ],
  "fields": [
   {
@@ -430,6 +433,25 @@
    "fieldname": "calendar_webhook_instruction",
    "fieldtype": "HTML",
    "label": "Webhook Instructions"
+  },
+  {
+   "fieldname": "tab_notifications",
+   "fieldtype": "Tab Break",
+   "label": "Notifications"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_global_error_notifications",
+   "fieldtype": "Check",
+   "label": "Enable Global Error Notifications",
+   "description": "Send a Lark Messenger alert for any critical errors in background jobs (Syncs, Backups, etc.)."
+  },
+  {
+   "depends_on": "eval:doc.enable_global_error_notifications",
+   "fieldname": "error_notification_chat_id",
+   "fieldtype": "Data",
+   "label": "Error Notification Chat ID",
+   "description": "The Lark Chat ID (or Open ID) where error alerts will be sent."
   },
   {
    "fieldname": "backup_progress",

@@ -123,6 +123,10 @@ def _get_config():
 		if settings.replace_erpnext_files_after_upload is not None:
 			config["replace_erpnext_files_after_upload"] = bool(settings.replace_erpnext_files_after_upload)
 
+		# Global Error Notifications
+		config["enable_global_error_notifications"] = bool(settings.enable_global_error_notifications)
+		config["error_notification_chat_id"] = settings.error_notification_chat_id or ""
+
 	if config["request_timeout"] <= 0:
 		config["request_timeout"] = DEFAULT_REQUEST_TIMEOUT
 
@@ -650,6 +654,64 @@ def get_lark_token(force_refresh: bool = False):
 		expires_in = max(expire - 120, 60) if expire else 60
 		cache.set_value(cache_key, token, expires_in_sec=expires_in)
 	return token
+
+
+def send_lark_notification(message, title="ERPNext Lark Alert"):
+	"""
+	Centralized helper to send a notification message to Lark Messenger.
+	Requires 'error_notification_chat_id' to be set in Lark Integration Settings.
+	"""
+	config = _get_config()
+	if not config.get("enable_global_error_notifications") or not config.get("error_notification_chat_id"):
+		return
+
+	token = get_lark_token()
+	if not token:
+		return
+
+	url = f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id"
+	
+	# Rich text content
+	content = {
+		"text": f"**{title}**\n\n{message}"
+	}
+	
+	import json
+	payload = {
+		"receive_id": config["error_notification_chat_id"],
+		"msg_type": "text",
+		"content": json.dumps(content)
+	}
+	
+	return _lark_request("POST", url, token=token, json=payload, skip_logging=True)
+
+
+def lark_background_worker(job_name):
+	"""
+	Decorator for Lark background workers.
+	Automatically logs errors and sends Lark Messenger notifications if enabled.
+	"""
+	def decorator(func):
+		import functools
+		@functools.wraps(func)
+		def wrapper(*args, **kwargs):
+			try:
+				return func(*args, **kwargs)
+			except Exception as e:
+				trace = frappe.get_traceback()
+				frappe.log_error(title=f"Lark Worker Failure: {job_name}", message=trace)
+				
+				# Notify via Lark
+				error_msg = f"❌ **Job Failed**: {job_name}\n"
+				error_msg += f"⚠️ **Error**: {str(e)}\n"
+				error_msg += f"🔗 [View Error Log]({frappe.utils.get_url()}/app/error-log?title=Lark%20Worker%20Failure:%20{job_name.replace(' ', '%20')})"
+				
+				send_lark_notification(error_msg, title=f"🚨 Lark Worker Error")
+				
+				# Re-raise for Frappe's background job manager
+				raise e
+		return wrapper
+	return decorator
 
 
 def get_erp_link(doctype, docname):
@@ -1463,6 +1525,8 @@ def _update_backup_status(settings, status: str, error: str | None = None, size:
 	settings.save(ignore_permissions=True, ignore_version=True)
 
 
+@frappe.whitelist()
+@lark_background_worker("Compliance Overdue Sync")
 def sync_overdue_documents():
 	"""Re-sync all Overdue documents to Lark (handles background status changes)."""
 	if not _doctype_available("Lark Sync Document"):
@@ -1491,6 +1555,8 @@ def sync_overdue_documents():
 			)
 
 
+@frappe.whitelist()
+@lark_background_worker("Backup Scheduler")
 def run_backup_scheduler():
 	settings = _get_settings_doc()
 	if not settings or not settings.backup_enabled:
@@ -1584,6 +1650,7 @@ def handle_file_attach(doc, handler=None):
 	)
 
 
+@lark_background_worker("Lark Drive Upload")
 def _upload_single_file_to_drive(file_name: str):
 	"""Background job: upload a specific File doc to Lark Drive."""
 	try:
@@ -1680,6 +1747,7 @@ def enqueue_universal_sync(doc, handler=None):
 		frappe.enqueue("lark_integration.api.sync_universal", doctype=doc.doctype, doc_name=doc.name, queue="long", enqueue_after_commit=True)
 
 
+@lark_background_worker("Universal Document Sync")
 def sync_universal(doctype, doc_name, **kwargs):
 	try:
 		doc = frappe.get_doc(doctype, doc_name)
@@ -2069,6 +2137,7 @@ def _should_sync_periodically(settings, sync_type):
 
 
 @frappe.whitelist()
+@lark_background_worker("Lark Task Sync")
 def pull_lark_tasks(publish_progress=False):
 	"""Scheduled task to pull updates from Lark Tasks back to ERPNext ToDo."""
 	settings = frappe.get_single("Lark Integration Settings")
@@ -2417,6 +2486,7 @@ def _sync_lark_calendars_with_erp(token):
 
 
 @frappe.whitelist()
+@lark_background_worker("Lark Calendar Sync")
 def pull_lark_calendar_events(publish_progress=False):
 	"""Scheduled task to pull updates from Lark Calendars back to ERPNext Event."""
 	settings = frappe.get_single("Lark Integration Settings")
@@ -3098,6 +3168,7 @@ def lark_webhook():
 	return {"status": "success", "message": "Event enqueued"}
 
 
+@lark_background_worker("Lark Webhook Handler")
 def _handle_lark_webhook_event(data):
 	"""Background job to process Lark Webhook events."""
 	header = data.get("header", {})
@@ -3462,6 +3533,8 @@ def reset_lark_api_usage():
 	frappe.db.delete("Lark API Log")
 	frappe.msgprint(frappe._("Lark API Logs have been cleared."))
 
+@frappe.whitelist()
+@lark_background_worker("Monthly Log Cleanup")
 def clear_old_lark_logs():
 	"""Scheduled task to clear Lark API Logs older than 30 days."""
 	from frappe.utils import add_days, now_datetime
@@ -3492,6 +3565,7 @@ def enqueue_lark_sync_batch(doctype, doc_name, fields, mapping):
 	frappe.db.commit()
 
 @frappe.whitelist()
+@lark_background_worker("Lark Batch Sync Processor")
 def process_lark_sync_batches():
 	"""Background job to process the Lark Sync Queue in batches."""
 	config = _get_config()
@@ -3612,6 +3686,7 @@ def _process_lark_batch_chunk(app_token, table_id, chunk, token):
 	frappe.db.commit()
 
 @frappe.whitelist()
+@lark_background_worker("Sync Queue Cleanup")
 def clear_old_sync_queue_records():
 	"""Clean up processed or old failed records from the Lark Sync Queue."""
 	from frappe.utils import add_days, now_datetime
