@@ -1289,6 +1289,7 @@ def handle_cancel(doc, handler=None):
 	)
 
 
+@lark_background_worker("Lark Cancellation Handler")
 def _handle_cancel_job(doctype, doc_name):
 	"""Background job to update Lark status to Cancelled."""
 	try:
@@ -1313,8 +1314,15 @@ def _handle_cancel_job(doctype, doc_name):
 			token,
 			mapping["app_token"],
 		)
-	except Exception:
-		frappe.log_error(title=f"Lark Cancel Fail: {doc.name}", message=frappe.get_traceback())
+		
+		# Cancellation Notification
+		if config.get("notify_on_sync_success"):
+			msg = f"**{doctype} Cancelled**: {doc_name}\n"
+			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
+			send_lark_notification(msg, title=f"❌ {doctype} Cancelled", is_error=False, roles=mapping.get("notification_roles"))
+
+	except Exception as e:
+		raise e
 
 
 def _parse_notification_emails(raw_value: str | None):
@@ -1803,6 +1811,7 @@ def enqueue_universal_sync(doc, handler=None):
 def sync_universal(doctype, doc_name, **kwargs):
 	try:
 		doc = frappe.get_doc(doctype, doc_name)
+		existing_lark_id = doc.get("lark_record_id")
 		
 		# Always sync linked references regardless of whether THIS doc is mapped to Bitable
 		# (e.g. Payment Entry is usually NOT mapped, but it must trigger Invoice sync)
@@ -1873,11 +1882,27 @@ def sync_universal(doctype, doc_name, **kwargs):
 					reference_name=doc.name
 				)
 		
-		# Individual Sync Success Notification
+		# Action-Specific Success Notification
 		if config.get("notify_on_sync_success"):
-			msg = f"**Document Synced**: {doctype} {doc_name}\n"
+			action = "Synced"
+			emoji = "✅"
+			
+			if doc.docstatus == 1:
+				action = "Submitted"
+				emoji = "✔️"
+			elif doc.docstatus == 2:
+				action = "Cancelled"
+				emoji = "❌"
+			elif not existing_lark_id:
+				action = "Created"
+				emoji = "🆕"
+			else:
+				action = "Updated"
+				emoji = "🔼"
+
+			msg = f"**{doctype} {action}**: {doc_name}\n"
 			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
-			send_lark_notification(msg, title="Document Sync Success", is_error=False, roles=mapping.get("notification_roles"))
+			send_lark_notification(msg, title=f"{emoji} {doctype} {action}", is_error=False, roles=mapping.get("notification_roles"))
 
 	except Exception as e:
 		# Decorator lark_background_worker will handle the notification for unhandled exceptions
