@@ -1,24 +1,28 @@
 {
  "charts": [],
+ "content": "[{\"id\":\"card_settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"card_config\",\"type\":\"card\",\"data\":{\"card_name\":\"Configuration\",\"col\":4}},{\"id\":\"card_data\",\"type\":\"card\",\"data\":{\"card_name\":\"Data\",\"col\":4}},{\"id\":\"card_logs\",\"type\":\"card\",\"data\":{\"card_name\":\"Logs\",\"col\":4}}]",
  "creation": "2026-03-14 11:35:00.000000",
+ "docstatus": 0,
  "doctype": "Workspace",
  "for_user": "",
+ "hide_custom": 0,
  "icon": "calendar",
- "indicator_color": "blue",
- "is_default": 0,
- "is_standard": 1,
+ "idx": 0,
+ "is_hidden": 0,
  "label": "Lark Integration",
- "title": "Lark Integration",
  "links": [
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Settings",
-   "link_count": 0,
-   "link_type": "DocType",
+   "link_count": 1,
    "onboard": 0,
    "type": "Card Break"
   },
   {
    "dependencies": "Settings",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Lark Integration Settings",
    "link_count": 0,
    "link_to": "Lark Integration Settings",
@@ -27,14 +31,17 @@
    "type": "Link"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Configuration",
-   "link_count": 0,
-   "link_type": "DocType",
+   "link_count": 2,
    "onboard": 0,
    "type": "Card Break"
   },
   {
    "dependencies": "Configuration",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Lark Sync Document",
    "link_count": 0,
    "link_to": "Lark Sync Document",
@@ -44,6 +51,8 @@
   },
   {
    "dependencies": "Configuration",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Lark Approval Mapping",
    "link_count": 0,
    "link_to": "Lark Approval Mapping",
@@ -52,14 +61,17 @@
    "type": "Link"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Data",
-   "link_count": 0,
-   "link_type": "DocType",
+   "link_count": 3,
    "onboard": 0,
    "type": "Card Break"
   },
   {
    "dependencies": "Data",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Lark Task List",
    "link_count": 0,
    "link_to": "Lark Task List",
@@ -69,6 +81,8 @@
   },
   {
    "dependencies": "Data",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Lark Calendar",
    "link_count": 0,
    "link_to": "Lark Calendar",
@@ -78,6 +92,8 @@
   },
   {
    "dependencies": "Data",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Lark Drive File",
    "link_count": 0,
    "link_to": "Lark Drive File",
@@ -86,14 +102,17 @@
    "type": "Link"
   },
   {
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Logs",
-   "link_count": 0,
-   "link_type": "DocType",
+   "link_count": 1,
    "onboard": 0,
    "type": "Card Break"
   },
   {
    "dependencies": "Logs",
+   "hidden": 0,
+   "is_query_report": 0,
    "label": "Lark API Log",
    "link_count": 0,
    "link_to": "Lark API Log",
@@ -102,21 +121,16 @@
    "type": "Link"
   }
  ],
- "modified": "2026-03-14 11:39:00.000000",
+ "modified": "2026-03-14 11:43:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Integration",
- "number_of_columns": 1,
  "owner": "Administrator",
  "parent_page": "",
  "public": 1,
- "is_hidden": 0,
  "quick_lists": [],
- "roles": [
-  {
-   "role": "System Manager"
-  }
- ],
- "sequence_id": 1,
- "shortcuts": []
+ "roles": [],
+ "sequence_id": 1.0,
+ "shortcuts": [],
+ "title": "Lark Integration"
 }
