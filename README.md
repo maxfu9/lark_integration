@@ -40,6 +40,7 @@ Enable the following API scopes to allow ERPNext to communicate with Lark:
 | **Bitable** | `bitable:app` | Sync ERPNext records to Bitable cells. |
 | **Drive** | `drive:drive` | Upload attachments & back up your site. |
 | **Tasks** | `task:task:write`, `task:task:read` | Bidirectional ToDo sync. |
+| **Task Lists** | `task:tasklist:read`, `task:tag:read` | Fetch and sync Task Lists & Tags. |
 | **Calendar** | `calendar:calendar`, `calendar:calendar:readonly` | Bidirectional Event sync. |
 | **Contact** | `contact:user.email:readonly` | User identification. |
 
@@ -49,6 +50,7 @@ To enable **Real-Time** sync from Lark back to ERPNext:
 2.  Set **Request URL** to: `https://[your-site-url]/api/method/lark_integration.api.lark_webhook`
 3.  Add events:
     - `task.task.updated_v2`, `task.task.deleted_v2` (for ToDos)
+    - `task.tasklist.updated_v2`, `task.tasklist.deleted_v2` (for Task Lists)
     - `calendar.calendar_event.updated_v4`, `calendar.calendar_event.deleted_v4` (for Events)
 
 ---
