@@ -70,7 +70,8 @@
   "error_notification_chat_id",
   "notify_on_sync_success",
   "notify_on_batch_success",
-  "notification_recipients"
+  "notification_recipients",
+  "notification_rules"
  ],
  "fields": [
   {
@@ -476,6 +477,13 @@
     "label": "Role-Based Recipients",
     "description": "Map ERPNext Roles to specific Lark Chat IDs for targeted notifications.",
     "options": "Lark Notification Recipient"
+   },
+   {
+    "fieldname": "notification_rules",
+    "fieldtype": "Table",
+    "label": "Notification Rules",
+    "description": "Trigger Lark notifications based on Document events and conditions.",
+    "options": "Lark Notification Rule"
    },
    {
     "fieldname": "backup_progress",

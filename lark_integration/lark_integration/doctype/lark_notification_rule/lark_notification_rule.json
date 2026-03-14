@@ -1,26 +1,26 @@
 {
  "actions": [],
  "allow_rename": 1,
- "creation": "2026-03-14 23:35:00.000000",
+ "creation": "2026-03-14 23:55:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "role",
+  "document_type",
   "trigger_event",
   "changed_field",
-  "condition"
+  "condition",
+  "role"
  ],
  "fields": [
   {
-   "fieldname": "role",
+   "fieldname": "document_type",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Role",
-   "options": "Role",
+   "label": "Document Type",
+   "options": "DocType",
    "reqd": 1
   },
   {
-   "default": "Submit",
    "fieldname": "trigger_event",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -32,23 +32,32 @@
    "depends_on": "eval:doc.trigger_event == 'Value Change'",
    "fieldname": "changed_field",
    "fieldtype": "Data",
+   "in_list_view": 1,
    "label": "Changed Field",
-   "description": "Enter the fieldname to monitor for changes."
+   "description": "The field to monitor for changes."
   },
   {
    "fieldname": "condition",
    "fieldtype": "Code",
    "label": "Condition",
-   "description": "Optional: Python condition (e.g., doc.status == 'Open')",
-   "options": "Python"
+   "options": "Python",
+   "description": "Example: doc.status == 'Open'"
+  },
+  {
+   "fieldname": "role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Role to Notify",
+   "options": "Role",
+   "reqd": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
- "modified": "2026-03-14 23:35:00.000000",
+ "modified": "2026-03-14 23:55:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
- "name": "Lark Sync Notification Role",
+ "name": "Lark Notification Rule",
  "owner": "Administrator",
  "permissions": [],
  "sort_field": "modified",

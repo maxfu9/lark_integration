@@ -1,5 +1,5 @@
 import frappe
 from frappe.model.document import Document
 
-class LarkSyncNotificationRole(Document):
+class LarkNotificationRule(Document):
 	pass

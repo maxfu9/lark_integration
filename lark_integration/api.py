@@ -134,6 +134,16 @@ def _get_config():
 			{"role": d.erpnext_role, "chat_id": d.lark_chat_id}
 			for d in settings.get("notification_recipients", [])
 		]
+		config["notification_rules"] = [
+			{
+				"document_type": d.document_type,
+				"event": d.trigger_event,
+				"changed_field": d.changed_field,
+				"condition": d.condition,
+				"role": d.role
+			}
+			for d in settings.get("notification_rules", [])
+		]
 
 	if config["request_timeout"] <= 0:
 		config["request_timeout"] = DEFAULT_REQUEST_TIMEOUT
@@ -245,16 +255,6 @@ def _get_sync_mapping(doctype: str):
 					for d in sync_doc.get("child_field_mappings", [])
 					if d.lark_field and (d.child_field_path or d.child_field)
 				]
-
-			mapping["notification_roles"] = [
-				{
-					"role": d.role, 
-					"event": d.trigger_event,
-					"changed_field": d.changed_field,
-					"condition": d.condition
-				}
-				for d in sync_doc.get("notification_roles", [])
-			]
 
 	mapping["app_token"] = mapping.get("app_token")
 
@@ -674,10 +674,10 @@ def get_lark_token(force_refresh: bool = False):
 	return token
 
 
-def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, roles=None, event=None, doc=None):
+def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, roles=None, event=None, doc=None, doctype=None):
 	"""
 	Centralized helper to send a notification message to Lark Messenger.
-	Supports role-based routing, event triggers, and conditions.
+	Evaluates global rules from Lark Integration Settings.
 	"""
 	config = _get_config()
 	if not config.get("enable_global_error_notifications") or not config.get("error_notification_chat_id"):
@@ -685,8 +685,6 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 
 	# 1. Identify Target Chat IDs
 	target_chats = set()
-	
-	# Global/Error fallback
 	global_chat_id = config.get("error_notification_chat_id")
 	
 	if is_error:
@@ -697,32 +695,42 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 		for r in recipients:
 			if r["role"] == "System Manager":
 				target_chats.add(r["chat_id"])
-	elif event and roles:
+	else:
 		# Map: Role -> Chat ID from settings
 		role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
 		
-		# roles argument is the per-doc trigger mapping: [{"role": "X", "event": "Y", "condition": "...", "changed_field": "..."}]
-		for trigger in roles:
-			if trigger["event"] == event or (trigger["event"] == "Value Change" and event == "Save"):
-				# 1. Evaluate Condition if present
-				if trigger.get("condition"):
-					try:
-						if not frappe.safe_eval(trigger["condition"], None, {"doc": doc, "frappe": frappe}):
+		# Resolve from Global Notification Rules
+		current_doctype = doctype or (doc.doctype if doc else None)
+		if current_doctype and event:
+			rules = config.get("notification_rules", [])
+			for rule in rules:
+				if rule["document_type"] == current_doctype and (rule["event"] == event or (rule["event"] == "Value Change" and event == "Save")):
+					# a. Evaluate Condition if present
+					if rule.get("condition"):
+						try:
+							if not frappe.safe_eval(rule["condition"], None, {"doc": doc, "frappe": frappe}):
+								continue
+						except Exception:
+							frappe.log_error("Lark Notification Condition Error", frappe.get_traceback())
 							continue
-					except Exception:
-						frappe.log_error("Notification Condition Evaluation Error", frappe.get_traceback())
-						continue
-				
-				# 2. Evaluate Value Change if event is Value Change
-				if trigger["event"] == "Value Change" and trigger.get("changed_field") and doc:
-					# For background sync, we'd need old values. 
-					# For now, if specified, we assume any Save triggers it if condition passes, 
-					# but ideally we'd check if field actually changed.
-					pass
+					
+					# b. Evaluate Value Change
+					if rule["event"] == "Value Change" and rule.get("changed_field") and doc:
+						# Simple check: if doc is dirty (for synced docs) or we just assume Save triggers it
+						pass
+					
+					chat_id = role_to_chat.get(rule["role"])
+					if chat_id:
+						target_chats.add(chat_id)
 
-				chat_id = role_to_chat.get(trigger["role"])
-				if chat_id:
-					target_chats.add(chat_id)
+	# 2. Manual Roles Override/Fallback (e.g. System Manager alerts from decorator)
+	if roles:
+		if isinstance(roles, str): roles = [roles]
+		role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
+		for r_name in roles:
+			chat_id = role_to_chat.get(r_name)
+			if chat_id:
+				target_chats.add(chat_id)
 
 	if not target_chats:
 		return
@@ -1344,7 +1352,7 @@ def _handle_cancel_job(doctype, doc_name):
 		if config.get("notify_on_sync_success"):
 			msg = f"**{doctype} Cancelled**: {doc_name}\n"
 			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
-			send_lark_notification(msg, title=f"❌ {doctype} Cancelled", is_error=False, roles=mapping.get("notification_roles"), event="Cancel", doc=doc)
+			send_lark_notification(msg, title=f"❌ {doctype} Cancelled", is_error=False, event="Cancel", doc=doc)
 
 	except Exception as e:
 		raise e
@@ -1932,7 +1940,7 @@ def sync_universal(doctype, doc_name, **kwargs):
 
 			msg = f"**{doctype} {action}**: {doc_name}\n"
 			msg += f"🔗 [Open in ERPNext]({frappe.utils.get_url()}/app/{doctype.lower().replace(' ', '-')}/{doc_name})"
-			send_lark_notification(msg, title=f"{emoji} {doctype} {action}", is_error=False, roles=mapping.get("notification_roles"), event=trigger, doc=doc)
+			send_lark_notification(msg, title=f"{emoji} {doctype} {action}", is_error=False, event=trigger, doc=doc)
 
 	except Exception as e:
 		# Decorator lark_background_worker will handle the notification for unhandled exceptions
