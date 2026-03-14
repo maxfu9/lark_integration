@@ -4,3 +4,14 @@ __pycache__/
 .vscode/
 .idea/
 *.swp
+*.json
+check_*.py
+debug_*.py
+test_*.py
+verify_*.py
+find_*.py
+get_*.py
+log_*.py
+*.webp
+*.png
+.DS_Store
