@@ -46,7 +46,7 @@
  "name": "Lark API Usage Summary",
  "owner": "Administrator",
  "prepared_report": 0,
- "query": "SELECT \n    COALESCE(reference_doctype, 'System / Auth') as `reference_doctype`,\n    COALESCE(reference_name, 'Global') as `reference_name`,\n    COUNT(*) as `total_calls`,\n    SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as `success_calls`,\n    SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as `failed_calls`\nFROM `tabLark API Log` \nGROUP BY reference_doctype, reference_name \nORDER BY COUNT(*) DESC",
+ "query": "SELECT \n    COALESCE(reference_doctype, 'System / Auth') as `reference_doctype`,\n    COALESCE(reference_name, 'Global') as `reference_name`,\n    COUNT(*) as `total_calls`,\n    SUM(CASE WHEN status_code BETWEEN 200 AND 299 THEN 1 ELSE 0 END) as `success_calls`,\n    SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as `failed_calls`\nFROM `tabLark API Log` \nWHERE MONTH(creation) = MONTH(CURRENT_DATE()) AND YEAR(creation) = YEAR(CURRENT_DATE())\nGROUP BY reference_doctype, reference_name \nORDER BY COUNT(*) DESC",
  "ref_doctype": "Lark API Log",
  "report_name": "Lark API Usage Summary",
  "report_type": "Query Report"

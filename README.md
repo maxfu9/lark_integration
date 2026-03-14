@@ -18,9 +18,12 @@ bench --site [your-site-name] install-app lark_integration
 # Build assets
 bench build --app lark_integration
 
-# Run migrations
+# Run migrations (This automatically configures all custom fields)
 bench --site [your-site-name] migrate
 ```
+
+> [!TIP]
+> **Production Ready**: This app automatically manages its own schema. Whether you install it on a brand-new site or an existing production environment, the `migrate` command will safely ensure all required custom fields and permissions are in place without manual configuration.
 
 ---
 

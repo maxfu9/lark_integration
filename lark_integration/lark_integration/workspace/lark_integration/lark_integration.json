@@ -119,6 +119,17 @@
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
+  },
+  {
+   "dependencies": "Logs",
+   "hidden": 0,
+   "is_query_report": 1,
+   "label": "Lark API Usage Summary",
+   "link_count": 0,
+   "link_to": "Lark API Usage Summary",
+   "link_type": "Report",
+   "onboard": 0,
+   "type": "Link"
   }
  ],
  "modified": "2026-03-14 11:43:00.000000",

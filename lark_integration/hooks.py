@@ -1,8 +1,8 @@
 app_name = "lark_integration"
 app_title = "Lark Integration"
-app_publisher = "Your Name"
-app_description = "Syncs ERPNext documents to Lark Bitable"
-app_email = "your@email.com"
+app_publisher = "Maxfu"
+app_description = "Seamless integration between ERPNext and Lark Suite (Bitable, Tasks, Calendar, Drive, and Approvals)."
+app_email = "hello@europlast.pk"
 app_license = "mit"
 
 doc_events = {
@@ -56,7 +56,8 @@ scheduler_events = {
         "lark_integration.api.run_backup_scheduler"
     ],
     "daily": [
-        "lark_integration.api.sync_overdue_documents"
+        "lark_integration.api.sync_overdue_documents",
+        "lark_integration.api.clear_old_lark_logs"
     ]
 }
 
@@ -64,3 +65,6 @@ doctype_js = {
     "Event": "public/js/event.js",
     "ToDo": "public/js/todo.js"
 }
+
+after_install = "lark_integration.setup.after_install"
+after_migrate = "lark_integration.setup.after_migrate"

@@ -130,15 +130,16 @@ def _get_config():
 
 @frappe.whitelist()
 def clear_lark_cache(doc=None, method=None):
-	"""Clears all cached Lark mappings and configuration."""
-	frappe.cache().delete_keys("lark_sync_mapping:*")
-	frappe.cache().delete_keys("lark_integration:*")
+	"""Clears cached Lark mappings. Targeted if doc is provided, otherwise global."""
 	if doc and doc.doctype == "Lark Sync Document":
 		frappe.cache().delete_value(f"lark_sync_mapping:{doc.document_type}")
+	elif doc and doc.doctype == "Lark Integration Settings":
+		frappe.cache().delete_keys("lark_integration:*")
+	else:
+		# Global flush (fallback or explicit call)
+		frappe.cache().delete_keys("lark_sync_mapping:*")
+		frappe.cache().delete_keys("lark_integration:*")
 	
-	import time
-	# Use a small sleep to ensure cache is cleared across all workers if needed
-	# though delete_keys is usually enough for Redis.
 	return True
 
 
@@ -527,7 +528,9 @@ def _lark_request(method: str, url: str, token: str | None = None, skip_logging:
 				
 			if is_retryable and attempt < MAX_RETRIES - 1:
 				delay = BASE_DELAY * (2 ** attempt)
-				frappe.log_error(title=f"Lark API Retry {attempt+1}", message=f"URL: {url} | Error: {exc} | Retrying in {delay}s")
+				# Descriptive retry logging
+				retry_reason = "Rate Limited (429)" if status_code == 429 else f"Server Error ({status_code})" if status_code else "Network Error"
+				frappe.log_error(title=f"Lark API Retry {attempt+1} - {retry_reason}", message=f"URL: {url}\nError: {exc}\nRetrying in {delay}s")
 				time.sleep(delay)
 				continue
 				
@@ -2024,7 +2027,7 @@ def pull_lark_tasks(publish_progress=False):
 		pass  # Don't break the sync if list cleanup fails
 
 	# 1. Collect GUIDs from all mapped Task Lists
-	all_guids = set()
+	all_guids = {} # Use dict to store {guid: updated_at}
 	task_lists = frappe.get_all("Lark Task List", filters={"lark_list_guid": ("!=", "")}, fields=["name", "lark_list_guid"])
 	for tl in task_lists:
 		tl_guid = tl.lark_list_guid
@@ -2036,20 +2039,29 @@ def pull_lark_tasks(publish_progress=False):
 		if tl_res and "data" in tl_res and "items" in tl_res.get("data", {}):
 			for item in tl_res["data"]["items"]:
 				if item.get("guid"):
-					all_guids.add(item["guid"])
-
-	# 2. Collect GUIDs from existing ToDos
-	existing_guids = frappe.db.get_all("ToDo", filters={"lark_task_guid": ("!=", "")}, pluck="lark_task_guid")
-	all_guids.update(eg for eg in existing_guids if eg)
+					all_guids[item["guid"]] = item.get("updated_at")
+	
+	# 2. Collect GUIDs from existing ToDos (if not already discovered via list)
+	existing_tasks = frappe.db.get_all("ToDo", filters={"lark_task_guid": ("!=", "")}, fields=["lark_task_guid", "lark_last_modified"])
+	for et in existing_tasks:
+		if et.lark_task_guid not in all_guids:
+			all_guids[et.lark_task_guid] = et.lark_last_modified # Store local modified time if remote not known yet
 
 	# 3. Fetch full details for EVERY guid and sync
 	total = len(all_guids)
 	synced = 0
 	
-	for i, guid in enumerate(all_guids):
+	for i, (guid, remote_updated_at) in enumerate(all_guids.items()):
 		if publish_progress:
 			prog = 10 + int((i / total) * 80)
 			frappe.publish_progress(prog, title="ToDo Sync", description=f"Syncing task {i+1}/{total}...")
+
+		# Optimization: Skip detail fetch if we already have the task and its modification time matches
+		local_modified = None
+		if remote_updated_at:
+			local_modified = frappe.db.get_value("ToDo", {"lark_task_guid": guid}, "lark_last_modified")
+			if local_modified == str(remote_updated_at):
+				continue
 
 		# Fetch full detail
 		detail_url = f"{LARK_BASE_URL}/task/v2/tasks/{guid}"
@@ -2100,6 +2112,7 @@ def pull_lark_tasks(publish_progress=False):
 				"doctype": "ToDo",
 				"description": summary,
 				"lark_task_guid": guid,
+				"lark_last_modified": str(item.get("updated_at", "")),
 				"status": "Closed" if item.get("completed_at") not in (None, "0", 0) else "Open",
 				"owner": owner or frappe.session.user,
 				"assigned_by": owner or frappe.session.user,
@@ -2383,7 +2396,7 @@ def pull_lark_calendar_events(publish_progress=False):
 			"id": u.lark_user_id, 
 			"label": f"Primary ({u.name})", 
 			"user": u.name, 
-			"sync_token": None
+			"sync_token": frappe.db.get_value("User", u.name, "lark_sync_token")
 		})
 
 	active_target_count = len(sync_targets)
@@ -2414,7 +2427,8 @@ def pull_lark_calendar_events(publish_progress=False):
 		if data.get("sync_token"):
 			if target.get("docname"):
 				frappe.db.set_value("Lark Calendar", target["docname"], "sync_token", data["sync_token"])
-			# Note: legacy user user sync token isn't stored currently as User doc doesn't have it
+			elif target.get("user"):
+				frappe.db.set_value("User", target["user"], "lark_sync_token", data["sync_token"])
 
 		for item in items:
 			event_id = item.get("event_id")
@@ -3022,9 +3036,15 @@ def lark_webhook():
 def _handle_lark_webhook_event(data):
 	"""Background job to process Lark Webhook events."""
 	header = data.get("header", {})
-	event_type = header.get("event_type")
 	event = data.get("event", {})
 	
+	# Safety check for empty or malformed payload
+	if not header or not event:
+		if not header and not event:
+			# Likely a URL verification challenge
+			return {"status": "ignored"}
+		return {"status": "error", "message": "Malformed webhook payload"}
+
 	settings = frappe.get_single("Lark Integration Settings")
 	token = get_lark_token()
 	
@@ -3369,6 +3389,19 @@ def _sync_todo_from_lark_task(todo, item, settings, token):
 			todo.db_set("lark_task_list", todo.lark_task_list, update_modified=True)
 	
 	return changed
+
+@frappe.whitelist()
+def reset_lark_api_usage():
+	"""Manually clear all Lark API Logs."""
+	frappe.only_for("System Manager")
+	frappe.db.delete("Lark API Log")
+	frappe.msgprint(frappe._("Lark API Logs have been cleared."))
+
+def clear_old_lark_logs():
+	"""Scheduled task to clear Lark API Logs older than 30 days."""
+	from frappe.utils import add_days, now_datetime
+	cutoff_date = add_days(now_datetime(), -30)
+	frappe.db.delete("Lark API Log", {"creation": ["<", cutoff_date]})
 
 
 
