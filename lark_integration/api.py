@@ -678,14 +678,19 @@ def _get_notification_context(doc, is_new=False):
 	return ("🔼", "Updated", "Save")
 
 
-def process_lark_notifications(doc, event):
+def process_lark_notifications(doc, event, method=None):
 	"""
 	Universal dispatcher for Lark Notifications using the new standalone DocType.
 	Mirrors native ERPNext Notification behavior.
+	Support for: New, Save, Submit, Cancel, Value Change, Method.
 	"""
+	filters = {"enabled": 1, "document_type": doc.doctype, "event": event}
+	if event == "Method" and method:
+		filters["method"] = method
+
 	notifications = frappe.get_all("Lark Notification", 
-		filters={"enabled": 1, "document_type": doc.doctype, "event": event},
-		fields=["name", "subject", "message", "condition", "changed_field"]
+		filters=filters,
+		fields=["name", "subject", "message", "condition", "changed_field", "event"]
 	)
 	
 	if not notifications:
@@ -706,9 +711,15 @@ def process_lark_notifications(doc, event):
 
 		# 2. Value Change Check
 		if event == "Value Change" and n.changed_field:
-			# Background jobs don't reliably have before_save, 
-			# so we assume if we are here and field is specified, it's relevant.
-			pass
+			# If we have before-save state (for real-time hooks)
+			if doc.get_doc_before_save():
+				if doc.get(n.changed_field) == doc.get_doc_before_save().get(n.changed_field):
+					continue
+			# For background sync, we attempt a database comparison if possible
+			else:
+				db_val = frappe.db.get_value(doc.doctype, doc.name, n.changed_field)
+				if db_val == doc.get(n.changed_field):
+					continue
 
 		# 3. Render Templates
 		try:
@@ -734,6 +745,75 @@ def process_lark_notifications(doc, event):
 
 		# 5. Send
 		send_lark_notification(message, title=subject, target_chats=list(target_chats))
+
+
+def trigger_lark_notification(doc, method):
+	"""
+	Public wrapper to trigger notifications of type 'Method'.
+	Used by custom controller logic.
+	"""
+	process_lark_notifications(doc, "Method", method=method)
+
+
+def lark_scheduled_notifications():
+	"""
+	Daily job to process 'Days Before' and 'Days After' triggers.
+	Mirrors standard ERPNext notification scheduler.
+	"""
+	notifications = frappe.get_all("Lark Notification", 
+		filters={"enabled": 1, "event": ["in", ["Days Before", "Days After"]]},
+		fields=["name", "document_type", "event", "date_changed", "days_before_after", "subject", "message", "condition"]
+	)
+	
+	if not notifications:
+		return
+
+	config = _get_config()
+	role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
+
+	from frappe.utils import add_days, today, getdate
+	
+	for n in notifications:
+		# Calculate Target Date
+		days = n.days_before_after or 0
+		if n.event == "Days Before":
+			target_date = add_days(today(), days)
+		else: # Days After
+			target_date = add_days(today(), -days)
+			
+		# Fetch matching records
+		records = frappe.get_all(n.document_type, 
+			filters={n.date_changed: target_date},
+			fields=["name"]
+		)
+		
+		for r in records:
+			doc = frappe.get_doc(n.document_type, r.name)
+			
+			# 1. Condition Check
+			if n.condition:
+				try:
+					if not frappe.safe_eval(n.condition, None, {"doc": doc, "frappe": frappe}):
+						continue
+				except Exception:
+					continue
+			
+			# 2. Render Template
+			try:
+				subject = frappe.render_template(n.subject, {"doc": doc})
+				message = frappe.render_template(n.message, {"doc": doc})
+			except Exception:
+				continue
+				
+			# 3. Resolve Recipients
+			rec_roles = frappe.get_all("Lark Notification Recipient", filters={"parent": n.name}, fields=["role"])
+			chats = set()
+			for rr in rec_roles:
+				c_id = role_to_chat.get(rr.role)
+				if c_id: chats.add(c_id)
+				
+			if chats:
+				send_lark_notification(message, title=subject, target_chats=list(chats))
 
 
 def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None):

@@ -58,6 +58,7 @@ scheduler_events = {
     ],
     "daily": [
         "lark_integration.api.sync_overdue_documents",
+        "lark_integration.api.lark_scheduled_notifications",
         "lark_integration.api.clear_old_lark_logs",
         "lark_integration.api.clear_old_sync_queue_records"
     ]
