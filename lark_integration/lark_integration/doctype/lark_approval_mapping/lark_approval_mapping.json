@@ -28,6 +28,7 @@
       "options": "DocType",
       "reqd": 1,
       "unique": 1,
+      "set_only_once": 1,
       "description": "The DocType in ERPNext you want to enable Lark Approvals for."
     },
     {
