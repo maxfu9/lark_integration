@@ -139,6 +139,7 @@ frappe.ui.form.on("Lark Sync Document", {
 		};
 	},
 	refresh(frm) {
+		frm.set_df_property("document_type", "hidden", 0);
 		frm._set_erp_field_options();
 		frm._set_child_table_options();
 		frm._set_summary_options();
