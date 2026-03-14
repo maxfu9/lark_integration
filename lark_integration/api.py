@@ -2644,20 +2644,52 @@ def _process_lark_approval_trigger(doctype, docname):
 	if not token:
 		return
 
-	# 5. Resolve Approver
-	next_user = frappe.db.get_value("Workflow Action", {"reference_name": doc.name, "status": "Open"}, "next_user")
-	if not next_user:
-		next_user = getattr(doc, "approver", None) or doc.owner
+	# 5. Resolve Approvers (Permission-aware)
+	approver_lark_ids = []
+	
+	# Try Workflow Transition Roles first (Precise role-based filtering)
+	workflow_name = frappe.db.get_value("Workflow", {"document_type": doctype, "is_active": 1}, "name")
+	if workflow_name and mapping.approve_action:
+		role = frappe.db.get_value("Workflow Transition", {
+			"parent": workflow_name,
+			"state": doc.workflow_state,
+			"action": mapping.approve_action
+		}, "allowed")
+		
+		if role:
+			users = frappe.get_all("Has Role", filters={"role": role}, fields=["parent"])
+			potential_users = [u.parent for u in users]
+			approver_lark_ids = frappe.db.get_all("User", 
+				filters={"name": ["in", potential_users], "lark_user_id": ["!=", ""]},
+				pluck="lark_user_id"
+			)
 
-	lark_approver_id = frappe.db.get_value("User", next_user, "lark_user_id")
-	if not lark_approver_id:
-		# Silent sync attempt
-		sync_lark_user_ids()
-		lark_approver_id = frappe.db.get_value("User", next_user, "lark_user_id")
+	# Fallback/Supplemental: Check current Assignments (Workflow Action table)
+	if not approver_lark_ids:
+		assigned_users = frappe.db.get_all("Workflow Action", 
+			filters={"reference_name": doc.name, "status": "Open"},
+			pluck="next_user"
+		)
+		if assigned_users:
+			approver_lark_ids = frappe.db.get_all("User", 
+				filters={"name": ["in", assigned_users], "lark_user_id": ["!=", ""]},
+				pluck="lark_user_id"
+			)
 
-	if not lark_approver_id:
-		doc.add_comment("Comment", f"Lark Approval Failed: Could not resolve Lark ID for approver {next_user}")
+	# Final Fallback to Approver field or Owner
+	if not approver_lark_ids:
+		fallback_user = getattr(doc, "approver", None) or doc.owner
+		lark_id = frappe.db.get_value("User", fallback_user, "lark_user_id")
+		if lark_id:
+			approver_lark_ids = [lark_id]
+
+	if not approver_lark_ids:
+		doc.add_comment("Comment", f"Lark Approval Failed: Could not resolve any authorized users with Lark IDs for state {doc.workflow_state}")
 		return
+
+	# Resolve Initiator (for the 'Instance Submitter' in Lark)
+	initiator_user = frappe.session.user if (frappe.session.user and frappe.session.user != "Guest") else doc.owner
+	lark_initiator_id = frappe.db.get_value("User", initiator_user, "lark_user_id") or approver_lark_ids[0]
 
 	# 6. Build Form Data dynamically
 	mappings = frappe.get_all("Lark Approval Field", filters={"parent": mapping.name}, fields=["*"])
@@ -2679,8 +2711,8 @@ def _process_lark_approval_trigger(doctype, docname):
 	approval_url = f"{LARK_BASE_URL}/approval/v4/instances"
 	payload = {
 		"approval_code": mapping.approval_code,
-		"user_id": lark_approver_id,
-		"approver": [{"user_id": lark_approver_id}],
+		"user_id": lark_initiator_id,
+		"approver": [{"user_id": uid} for uid in approver_lark_ids],
 		"form": json.dumps(form_data)
 	}
 
