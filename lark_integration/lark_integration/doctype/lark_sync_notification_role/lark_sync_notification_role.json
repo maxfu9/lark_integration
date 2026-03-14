@@ -5,7 +5,8 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "role"
+  "role",
+  "trigger_event"
  ],
  "fields": [
   {
@@ -14,6 +15,15 @@
    "in_list_view": 1,
    "label": "Role",
    "options": "Role",
+   "reqd": 1
+  },
+  {
+   "default": "Submit",
+   "fieldname": "trigger_event",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Trigger Event",
+   "options": "New\nSave\nSubmit\nCancel",
    "reqd": 1
   }
  ],
