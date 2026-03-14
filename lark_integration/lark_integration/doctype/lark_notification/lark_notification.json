@@ -8,16 +8,24 @@
   "enabled",
   "document_type",
   "channel",
+  "sb_trigger",
   "event",
   "changed_field",
+  "cb_target",
   "method",
   "date_changed",
   "days_before_after",
+  "sb_conditions",
   "condition",
+  "cb_attach",
   "attach_print",
   "print_format",
+  "sb_content",
   "subject",
   "message",
+  "cb_help",
+  "jinja_help",
+  "sb_recipients",
   "recipients"
  ],
  "fields": [
@@ -43,6 +51,11 @@
    "read_only": 1
   },
   {
+   "fieldname": "sb_trigger",
+   "fieldtype": "Section Break",
+   "label": "Trigger Settings"
+  },
+  {
    "fieldname": "event",
    "fieldtype": "Select",
    "label": "Event",
@@ -55,6 +68,10 @@
    "fieldtype": "Select",
    "label": "Changed Field",
    "description": "Trigger when this field is modified."
+  },
+  {
+   "fieldname": "cb_target",
+   "fieldtype": "Column Break"
   },
   {
    "depends_on": "eval:doc.event == 'Method'",
@@ -77,11 +94,20 @@
    "label": "Days Before/After"
   },
   {
+   "fieldname": "sb_conditions",
+   "fieldtype": "Section Break",
+   "label": "Conditions & Attachments"
+  },
+  {
    "fieldname": "condition",
    "fieldtype": "Code",
    "label": "Condition",
    "options": "Python",
    "description": "Optional: Python condition (e.g., doc.status == 'Open')"
+  },
+  {
+   "fieldname": "cb_attach",
+   "fieldtype": "Column Break"
   },
   {
    "fieldname": "attach_print",
@@ -96,6 +122,11 @@
    "options": "Print Format"
   },
   {
+   "fieldname": "sb_content",
+   "fieldtype": "Section Break",
+   "label": "Notification Content"
+  },
+  {
    "fieldname": "subject",
    "fieldtype": "Data",
    "label": "Subject",
@@ -108,6 +139,21 @@
    "label": "Message",
    "description": "Jinja enabled. Example: {{ doc.customer }} placed a new order.",
    "reqd": 1
+  },
+  {
+   "fieldname": "cb_help",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "jinja_help",
+   "fieldtype": "HTML",
+   "label": "Templating Guide",
+   "options": "<h4>Jinja Guide</h4><p>Use these variables in Subject or Message:</p><ul><li><code>doc</code>: The current record data</li><li><code>frappe.format(val, type)</code>: Format values</li><li><code>frappe.utils.today()</code>: Current date</li><li><code>get_url()</code>: Link to the record</li></ul>"
+  },
+  {
+   "fieldname": "sb_recipients",
+   "fieldtype": "Section Break",
+   "label": "Recipients"
   },
   {
    "fieldname": "recipients",

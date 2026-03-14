@@ -770,7 +770,15 @@ def process_lark_notifications(doc, event, method=None):
 				frappe.log_error(f"Lark Notification PDF Error: {n.name}", frappe.get_traceback())
 
 		# 6. Send
-		send_lark_notification(message, title=subject, target_chats=list(target_chats), file_key=file_key, file_name=f"{doc.name}.pdf")
+		send_lark_notification(
+			message, 
+			title=subject, 
+			target_chats=list(target_chats), 
+			file_key=file_key, 
+			file_name=f"{doc.name}.pdf",
+			reference_doctype="Lark Notification",
+			reference_name=n.name
+		)
 
 
 def trigger_lark_notification(doc, method):
@@ -839,10 +847,16 @@ def lark_scheduled_notifications():
 				if c_id: chats.add(c_id)
 				
 			if chats:
-				send_lark_notification(message, title=subject, target_chats=list(chats))
+				send_lark_notification(
+					message, 
+					title=subject, 
+					target_chats=list(chats),
+					reference_doctype="Lark Notification",
+					reference_name=n.name
+				)
 
 
-def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None, file_key=None, file_name=None):
+def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None, file_key=None, file_name=None, reference_doctype=None, reference_name=None):
 	"""
 	Low-level sender to Lark Messenger.
 	Supports standard text/post messages and optional file attachments.
@@ -891,7 +905,14 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 				}
 			})
 		}
-		_lark_request("POST", f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id", token=token, json=payload)
+		_lark_request(
+			"POST", 
+			f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id", 
+			token=token, 
+			json=payload,
+			reference_doctype=reference_doctype,
+			reference_name=reference_name
+		)
 		
 		# Optional File Message
 		if file_key:
@@ -900,7 +921,14 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 				"msg_type": "file",
 				"content": json.dumps({"file_key": file_key})
 			}
-			_lark_request("POST", f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id", token=token, json=file_payload)
+			_lark_request(
+				"POST", 
+				f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id", 
+				token=token, 
+				json=file_payload,
+				reference_doctype=reference_doctype,
+				reference_name=reference_name
+			)
 
 
 def upload_file_to_lark_messenger(file_name, content, token):

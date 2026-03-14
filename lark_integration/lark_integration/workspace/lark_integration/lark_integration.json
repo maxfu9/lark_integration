@@ -1,12 +1,12 @@
 {
  "charts": [],
- "content": "[{\"id\":\"card_settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"card_config\",\"type\":\"card\",\"data\":{\"card_name\":\"Configuration\",\"col\":4}},{\"id\":\"card_data\",\"type\":\"card\",\"data\":{\"card_name\":\"Data\",\"col\":4}},{\"id\":\"card_logs\",\"type\":\"card\",\"data\":{\"card_name\":\"Logs\",\"col\":4}}]",
+ "content": "[{\"id\":\"card_settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"card_notifications\",\"type\":\"card\",\"data\":{\"card_name\":\"Notifications\",\"col\":4}},{\"id\":\"card_config\",\"type\":\"card\",\"data\":{\"card_name\":\"Configuration\",\"col\":4}},{\"id\":\"card_data\",\"type\":\"card\",\"data\":{\"card_name\":\"Data\",\"col\":4}},{\"id\":\"card_logs\",\"type\":\"card\",\"data\":{\"card_name\":\"Logs\",\"col\":4}}]",
  "creation": "2026-03-14 11:35:00.000000",
  "docstatus": 0,
  "doctype": "Workspace",
  "for_user": "",
  "hide_custom": 0,
- "icon": "calendar",
+ "icon": "notification",
  "idx": 0,
  "is_hidden": 0,
  "label": "Lark Integration",
@@ -26,6 +26,25 @@
    "label": "Lark Integration Settings",
    "link_count": 0,
    "link_to": "Lark Integration Settings",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Notifications",
+   "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "Notifications",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Lark Notification",
+   "link_count": 0,
+   "link_to": "Lark Notification",
    "link_type": "DocType",
    "onboard": 0,
    "type": "Link"
@@ -146,6 +165,22 @@
   }
  ],
  "sequence_id": 1.0,
- "shortcuts": [],
+ "shortcuts": [
+  {
+   "color": "Blue",
+   "doc_view": "List",
+   "icon": "notification",
+   "label": "All Notifications",
+   "link_to": "Lark Notification",
+   "type": "DocType"
+  },
+  {
+   "color": "Green",
+   "icon": "add",
+   "label": "New Notification",
+   "link_to": "Lark Notification",
+   "type": "DocType"
+  }
+ ],
  "title": "Lark Integration"
 }
