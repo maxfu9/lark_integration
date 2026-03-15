@@ -2372,14 +2372,14 @@ def sync_universal(doctype, doc_name, **kwargs):
 		if config.get("enable_batching") and not kwargs.get("force_immediate"):
 			enqueue_lark_sync_batch(doctype, doc_name, fields, mapping)
 			# We still want to update the hash if we queued it successfully
-			if current_hash:
+			if current_hash and frappe.get_meta(doctype).has_field("lark_last_sync_hash"):
 				frappe.db.set_value(doctype, doc_name, "lark_last_sync_hash", current_hash, update_modified=False)
 			return
 
 		upsert_lark_record(mapping["main_table_id"], mapping["key_field"], doc.name, fields, token, mapping["app_token"], reference_doctype=doc.doctype, reference_name=doc.name)
 		
 		# Update the hash on success
-		if current_hash:
+		if current_hash and frappe.get_meta(doctype).has_field("lark_last_sync_hash"):
 			frappe.db.set_value(doctype, doc_name, "lark_last_sync_hash", current_hash, update_modified=False)
 			frappe.db.commit()
 

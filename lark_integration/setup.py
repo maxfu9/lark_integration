@@ -74,6 +74,15 @@ def create_custom_fields_if_missing():
                 "fieldtype": "Link",
                 "options": "Lark Task List",
                 "insert_after": "description"
+            },
+            {
+                "fieldname": "lark_last_sync_hash",
+                "label": "Lark Last Sync Hash",
+                "fieldtype": "Data",
+                "insert_after": "lark_task_list",
+                "read_only": 1,
+                "print_hide": 1,
+                "hidden": 1
             }
         ],
         "Event": [
@@ -121,6 +130,15 @@ def create_custom_fields_if_missing():
                 "fieldtype": "Data",
                 "insert_after": "lark_event_id",
                 "read_only": 1,
+                "hidden": 1
+            },
+            {
+                "fieldname": "lark_last_sync_hash",
+                "label": "Lark Last Sync Hash",
+                "fieldtype": "Data",
+                "insert_after": "lark_sync_token",
+                "read_only": 1,
+                "print_hide": 1,
                 "hidden": 1
             }
         ]
