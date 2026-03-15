@@ -1630,7 +1630,7 @@ def handle_file_delete(doc, method=None):
 
 	frappe.enqueue(
 		"lark_integration.api._delete_lark_file_job",
-		links=[l.as_dict() for l in links],
+		links=links,
 		parent_doctype=doc.attached_to_doctype,
 		parent_name=doc.attached_to_name,
 		queue="long",
