@@ -1,96 +1,104 @@
 {
-  "actions": [],
-  "allow_rename": 1,
-  "autoname": "field:document_type",
-  "creation": "2026-03-14 11:20:00.000000",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "enabled",
-    "document_type",
-    "trigger_workflow_state",
-    "approve_action",
-    "reject_action",
-    "approval_code",
-    "field_mappings"
-  ],
-  "fields": [
-    {
-      "default": "1",
-      "fieldname": "enabled",
-      "fieldtype": "Check",
-      "in_list_view": 1,
-      "label": "Enabled"
-    },
-    {
-      "fieldname": "document_type",
-      "fieldtype": "Link",
-      "in_list_view": 1,
-      "label": "ERPNext DocType",
-      "options": "DocType",
-      "reqd": 1,
-      "unique": 1,
-      "set_only_once": 1,
-      "description": "The DocType in ERPNext you want to enable Lark Approvals for."
-    },
-    {
-      "fieldname": "trigger_workflow_state",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Trigger Workflow State",
-      "reqd": 1,
-      "description": "The exact name of the Workflow State that triggers the Lark Approval (e.g., 'Pending Approval')."
-    },
-    {
-      "fieldname": "approve_action",
-      "fieldtype": "Data",
-      "label": "ERPNext Approve Action",
-      "description": "The Workflow Action to trigger when approved in Lark (e.g., 'Approve')."
-    },
-    {
-      "fieldname": "reject_action",
-      "fieldtype": "Data",
-      "label": "ERPNext Reject Action",
-      "description": "The Workflow Action to trigger when rejected in Lark (e.g., 'Reject')."
-    },
-    {
-      "fieldname": "approval_code",
-      "fieldtype": "Data",
-      "label": "Lark Approval Code",
-      "reqd": 1,
-      "description": "The unique code from your Lark Approval Definition."
-    },
-    {
-      "fieldname": "field_mappings",
-      "fieldtype": "Table",
-      "label": "Field Mappings",
-      "options": "Lark Approval Field",
-      "reqd": 1
-    }
-  ],
-  "index_web_pages_for_search": 1,
-  "links": [],
-  "modified": "2026-03-14 11:20:00.000000",
-  "modified_by": "Administrator",
-  "module": "Lark Integration",
-  "name": "Lark Approval Mapping",
-  "owner": "Administrator",
-  "permissions": [
-    {
-      "create": 1,
-      "delete": 1,
-      "email": 1,
-      "export": 1,
-      "print": 1,
-      "read": 1,
-      "report": 1,
-      "role": "System Manager",
-      "share": 1,
-      "write": 1
-    }
-  ],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": [],
-  "track_changes": 1
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:document_type",
+ "creation": "2026-03-14 11:20:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "document_type",
+  "trigger_workflow_state",
+  "approve_action",
+  "reject_action",
+  "approval_code",
+  "signature_required",
+  "field_mappings"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "document_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "ERPNext DocType",
+   "options": "DocType",
+   "reqd": 1,
+   "unique": 1,
+   "set_only_once": 1,
+   "description": "The DocType in ERPNext you want to enable Lark Approvals for."
+  },
+  {
+   "fieldname": "trigger_workflow_state",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Trigger Workflow State",
+   "reqd": 1,
+   "description": "The exact name of the Workflow State that triggers the Lark Approval (e.g., 'Pending Approval')."
+  },
+  {
+   "fieldname": "approve_action",
+   "fieldtype": "Data",
+   "label": "ERPNext Approve Action",
+   "description": "The Workflow Action to trigger when approved in Lark (e.g., 'Approve')."
+  },
+  {
+   "fieldname": "reject_action",
+   "fieldtype": "Data",
+   "label": "ERPNext Reject Action",
+   "description": "The Workflow Action to trigger when rejected in Lark (e.g., 'Reject')."
+  },
+  {
+   "fieldname": "approval_code",
+   "fieldtype": "Data",
+   "label": "Lark Approval Code",
+   "reqd": 1,
+   "description": "The unique code from your Lark Approval Definition."
+  },
+  {
+   "default": "0",
+   "fieldname": "signature_required",
+   "fieldtype": "Check",
+   "label": "Signature Required",
+   "description": "If enabled, Lark will require a digital signature to complete the approval."
+  },
+  {
+   "fieldname": "field_mappings",
+   "fieldtype": "Table",
+   "label": "Field Mappings",
+   "options": "Lark Approval Field",
+   "reqd": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-15 01:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Lark Integration",
+ "name": "Lark Approval Mapping",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

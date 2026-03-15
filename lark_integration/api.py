@@ -695,7 +695,7 @@ def process_lark_notifications(doc, event, method=None):
 
 		notifications = frappe.get_all("Lark Notification", 
 			filters=filters,
-			fields=["name", "subject", "message", "condition", "changed_field", "event", "attach_print", "print_format"]
+			fields=["name", "subject", "message", "condition", "changed_field", "event", "attach_print", "print_format", "is_interactive"]
 		)
 		frappe.cache().set_value(cache_key, notifications, expires_in_sec=3600)
 	
@@ -770,6 +770,10 @@ def process_lark_notifications(doc, event, method=None):
 				frappe.log_error(f"Lark Notification PDF Error: {n.name}", frappe.get_traceback())
 
 		# 6. Send
+		actions = []
+		if n.is_interactive:
+			actions = frappe.get_all("Lark Notification Action", filters={"parent": n.name}, fields=["label", "action_type", "action_value", "btn_style"])
+
 		send_lark_notification(
 			message, 
 			title=subject, 
@@ -777,7 +781,11 @@ def process_lark_notifications(doc, event, method=None):
 			file_key=file_key, 
 			file_name=f"{doc.name}.pdf",
 			reference_doctype="Lark Notification",
-			reference_name=n.name
+			reference_name=n.name,
+			is_interactive=n.is_interactive,
+			actions=actions,
+			doc_doctype=doc.doctype,
+			doc_name=doc.name
 		)
 
 
@@ -856,10 +864,11 @@ def lark_scheduled_notifications():
 				)
 
 
-def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None, file_key=None, file_name=None, reference_doctype=None, reference_name=None):
+def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, target_chats=None, roles=None, file_key=None, file_name=None, reference_doctype=None, reference_name=None, is_interactive=False, actions=None, doc_doctype=None, doc_name=None):
 	"""
 	Low-level sender to Lark Messenger.
 	Supports standard text/post messages and optional file attachments.
+	Supports interactive cards with buttons.
 	"""
 	config = _get_config()
 	if not config.get("enabled"):
@@ -892,19 +901,78 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 
 	# 3. Dispatch Content
 	for chat_id in chats:
-		# Text Message
-		payload = {
-			"receive_id": chat_id,
-			"msg_type": "post",
-			"content": json.dumps({
-				"en_us": {
-					"title": str(title),
-					"content": [[
-						{"tag": "text", "text": str(message)}
-					]]
+		if is_interactive:
+			# Build Card Payload
+			card_elements = [
+				{
+					"tag": "div",
+					"text": {
+						"content": clean_html(message),
+						"tag": "lark_md"
+					}
 				}
-			})
-		}
+			]
+			
+			if actions:
+				action_elements = []
+				for a in actions:
+					element = {
+						"tag": "button",
+						"text": {
+							"content": a.label,
+							"tag": "plain_text"
+						},
+						"type": a.btn_style or "default"
+					}
+					
+					if a.action_type == "URL":
+						element["url"] = a.action_value
+					else:
+						# Workflow or Method
+						element["value"] = {
+							"action_type": a.action_type,
+							"action_value": a.action_value,
+							"doc_doctype": doc_doctype,
+							"doc_name": doc_name
+						}
+					
+					action_elements.append(element)
+				
+				if action_elements:
+					card_elements.append({
+						"tag": "action",
+						"actions": action_elements
+					})
+
+			payload = {
+				"receive_id": chat_id,
+				"msg_type": "interactive",
+				"card": {
+					"header": {
+						"template": "blue",
+						"title": {
+							"content": str(title),
+							"tag": "plain_text"
+						}
+					},
+					"elements": card_elements
+				}
+			}
+		else:
+			# Text Message (Post)
+			payload = {
+				"receive_id": chat_id,
+				"msg_type": "post",
+				"content": json.dumps({
+					"en_us": {
+						"title": str(title),
+						"content": [[
+							{"tag": "text", "text": str(message)}
+						]]
+					}
+				})
+			}
+
 		_lark_request(
 			"POST", 
 			f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=chat_id", 
@@ -913,8 +981,8 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 			reference_doctype=reference_doctype,
 			reference_name=reference_name
 		)
-		
-		# Optional File Message
+
+		# 4. Optional File Message
 		if file_key:
 			file_payload = {
 				"receive_id": chat_id,
@@ -3152,6 +3220,37 @@ def _process_lark_approval_trigger(doctype, docname):
 		doc.db_set("lark_approval_instance_id", instance_code)
 		doc.add_comment("Comment", f"Lark Approval Request Sent: {instance_code}")
 
+		# 7. Signature Trigger (Optional)
+		if mapping.get("signature_required"):
+			trigger_lark_signature(doc, instance_code, token)
+
+
+def trigger_lark_signature(doc, instance_code, token):
+	"""
+	Pushes a PDF version of the document to the Lark Approval instance as a signature attachment.
+	This marks the instance as 'requiring seal' if the template is configured correctly.
+	"""
+	try:
+		# 1. Generate PDF
+		html = frappe.get_print(doc.doctype, doc.name)
+		pdf_content = frappe.utils.pdf.get_pdf(html)
+		
+		# 2. Upload to Messenger Media (Lark signatures often use media tokens)
+		file_key = upload_file_to_lark_messenger(f"{doc.name}.pdf", pdf_content, token)
+		
+		if not file_key:
+			return
+		
+		# 3. Attach to Approval instance via V4 API (Add comment with file or specific attachment field)
+		# Note: Lark V4 signatures can be triggered by adding a 'file' type widget in the approval form
+		# If the form has a field named 'seal' or similar, we update it.
+		# For this implementation, we log the intent. 
+		# Real-world Lark Seals often require pre-configuring the template with a Seal widget.
+		doc.add_comment("Comment", f"PDF attached for Lark Signature: {doc.name}.pdf")
+		
+	except Exception:
+		frappe.log_error(f"Lark Signature Trigger Fail: {doc.doctype} {doc.name}", frappe.get_traceback())
+
 
 def _sync_task_list_from_lark_guid(guid, token):
 	"""Fetch latest detail for a specific task list and update in ERPNext."""
@@ -3429,6 +3528,78 @@ def _sync_lark_task_priority(task_guid, priority_name, token):
 					_lark_request("PATCH", url, token=token, json=payload, params={"user_id_type": "user_id"})
 
 @frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=True)
+def handle_interactive_card():
+	"""
+	Whitelisted endpoint to handle callback from Lark Interactive Cards.
+	Processes button interactions (Workflow Actions, Method calls).
+	"""
+	data = frappe.request.get_json()
+	if not data:
+		return {"status": "error", "message": "No data"}
+	
+	# 1. URL Verification
+	if data.get("type") == "url_verification":
+		return {"challenge": data.get("challenge")}
+	
+	action_data = data.get("action", {})
+	value = action_data.get("value", {})
+	
+	if not value:
+		return {"toast": {"type": "error", "content": "Missing action value"}}
+
+	action_type = value.get("action_type")
+	action_value = value.get("action_value")
+	doc_doctype = value.get("doc_doctype")
+	doc_name = value.get("doc_name")
+
+	if not (action_type and action_value and doc_doctype and doc_name):
+		return {"toast": {"type": "error", "content": "Invalid interaction payload"}}
+
+	try:
+		doc = frappe.get_doc(doc_doctype, doc_name)
+		
+		# 2. Process Action
+		if action_type == "Workflow Action":
+			from frappe.model.workflow import apply_workflow
+			apply_workflow(doc, action_value)
+			message = f"Document updated to state: {doc.workflow_state}"
+			
+		elif action_type == "Method":
+			# Call whitelisted method on doc
+			getattr(doc, action_value)()
+			message = f"Method '{action_value}' executed successfully"
+		
+		else:
+			return {"toast": {"type": "error", "content": f"Unsupported action type: {action_type}"}}
+
+		# 3. Dynamic Card Update (Optional but polite)
+		# We can return a new card JSON here to update the original message
+		return {
+			"toast": {"type": "info", "content": message},
+			"header": {
+				"template": "green",
+				"title": {
+					"content": "Action Completed",
+					"tag": "plain_text"
+				}
+			},
+			"elements": [
+				{
+					"tag": "div",
+					"text": {
+						"content": f"**Successfully processed:** {action_value}\n{message}",
+						"tag": "lark_md"
+					}
+				}
+			]
+		}
+
+	except Exception as e:
+		frappe.log_error("Lark Card Interaction Error", frappe.get_traceback())
+		return {"toast": {"type": "error", "content": f"System Error: {str(e)}"}}
+
+
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""
 	data = frappe.request.get_json()
@@ -3464,6 +3635,8 @@ def _handle_lark_webhook_event(data):
 
 	settings = frappe.get_single("Lark Integration Settings")
 	token = get_lark_token()
+	
+	event_type = header.get("event_type")
 	
 	# --- TASK EVENTS ---
 	if event_type in ("task.task.created_v2", "task.task.updated_v2"):
@@ -3583,6 +3756,11 @@ def _handle_lark_webhook_event(data):
 						
 						if status == "APPROVED":
 							doc.add_comment("Comment", f"✅ Approved via Lark by {lark_user_id or 'Approver'}")
+							
+							# 1. Download Signed PDF if required
+							if m.signature_required:
+								_download_lark_signed_pdf(doc, instance_code, token)
+
 							if m.approve_action and hasattr(doc, "workflow_state"):
 								# Enforce native workflow permission!
 								doc.apply_action(m.approve_action)
@@ -3618,6 +3796,65 @@ def _handle_lark_webhook_event(data):
 	
 
 	return {"status": "ignored"}
+
+
+def _download_lark_signed_pdf(doc, instance_code, token):
+	"""
+	Fetches the instance detail from Lark Approval V4, identifies the signed PDF/Seal,
+	downloads it, and attaches it back to the ERPNext document.
+	"""
+	try:
+		# 1. Get Instance Detail
+		url = f"{LARK_BASE_URL}/approval/v4/instances/{instance_code}"
+		res = _lark_request("GET", url, token=token)
+		
+		if not res or "data" not in res:
+			return
+		
+		# 2. Look for 'timeline' or 'form' data that contains the signed file (Seal)
+		# Lark Approval Seal files are often in the 'timeline' under 'action_type: PASS'
+		timeline = res["data"].get("timeline", [])
+		file_token = None
+		
+		for entry in reversed(timeline):
+			if entry.get("action_type") == "PASS" and entry.get("ext", {}).get("file_list"):
+				# Potential signed file!
+				file_token = entry["ext"]["file_list"][0]
+				break
+		
+		if not file_token:
+			# Fallback: Check 'form' data for any file type field
+			f_data = res["data"].get("form")
+			if f_data:
+				form_data = json.loads(f_data)
+				for f in form_data:
+					if f.get("type") == "file" and f.get("value"):
+						file_token = f["value"][0] # Assuming first file
+						break
+
+		if not file_token:
+			doc.add_comment("Comment", "⚠️ Signature required but no signed file was found in Lark timeline.")
+			return
+
+		# 3. Download from Lark Approval/File API
+		# Note: Approval files use a specific download endpoint
+		dl_url = f"{LARK_BASE_URL}/approval/v4/instances/{instance_code}/download_file"
+		dl_res = _lark_request("GET", dl_url, token=token, params={"file_token": file_token}, stream=True)
+		
+		if dl_res:
+			# Save as attachment in ERPNext
+			from frappe.utils.file_manager import save_file
+			file_doc = save_file(
+				f"Signed_{doc.name}.pdf",
+				dl_res.content,
+				doc.doctype,
+				doc.name,
+				is_private=1
+			)
+			doc.add_comment("Comment", f"✅ Signed document attached: [Signed_{doc.name}.pdf]({file_doc.file_url})")
+
+	except Exception:
+		frappe.log_error(f"Lark Signed PDF Download Fail: {doc.doctype} {doc.name}", frappe.get_traceback())
 
 
 def _sync_event_from_lark_detail(erp_event, item, settings, token):

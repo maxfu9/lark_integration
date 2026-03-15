@@ -20,6 +20,9 @@
   "cb_attach",
   "attach_print",
   "print_format",
+  "sb_interactive",
+  "is_interactive",
+  "actions",
   "sb_content",
   "subject",
   "message",
@@ -121,6 +124,25 @@
    "label": "Print Format"
   },
   {
+   "fieldname": "sb_interactive",
+   "fieldtype": "Section Break",
+   "label": "Interactive Actions"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_interactive",
+   "fieldtype": "Check",
+   "label": "Is Interactive",
+   "description": "Enable interactive buttons on the Lark Messenger card."
+  },
+  {
+   "depends_on": "eval:doc.is_interactive == 1",
+   "fieldname": "actions",
+   "fieldtype": "Table",
+   "label": "Actions",
+   "options": "Lark Notification Action"
+  },
+  {
    "fieldname": "sb_content",
    "fieldtype": "Section Break",
    "label": "Notification Content"
@@ -163,7 +185,7 @@
   }
  ],
  "index_web_pages_for_search": 1,
- "modified": "2026-03-15 00:06:00.000000",
+ "modified": "2026-03-15 01:00:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Notification",
