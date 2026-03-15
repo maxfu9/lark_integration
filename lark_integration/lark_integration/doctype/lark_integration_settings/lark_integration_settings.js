@@ -31,6 +31,21 @@ frappe.ui.form.on("Lark Integration Settings", {
 				}
 			});
 		}, __("Integration"));
+		
+		frm.add_custom_button(__("Test Webhook Security"), () => {
+			frappe.call({
+				method: "lark_integration.api.test_lark_security",
+				callback: (r) => {
+					if (r.message) {
+						frappe.msgprint({
+							title: __(r.message.status === "success" ? "Security Verified" : "Verification Failed"),
+							message: __(r.message.message),
+							indicator: r.message.status === "success" ? "green" : "red"
+						});
+					}
+				}
+			});
+		}, __("Integration"));
 
 		// ToDo Webhook Instructions
 		if (frm.doc.todo_sync_method === "Webhook") {

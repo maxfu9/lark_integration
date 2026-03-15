@@ -16,7 +16,8 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Button Label",
-   "reqd": 1
+   "reqd": 1,
+   "description": "Text displayed on the button (e.g., 'Approve', 'View File')."
   },
   {
    "fieldname": "action_type",
@@ -24,14 +25,15 @@
    "in_list_view": 1,
    "label": "Action Type",
    "options": "URL\nWorkflow Action\nMethod",
-   "reqd": 1
+   "reqd": 1,
+   "description": "How to handle the button click. Use 'Workflow Action' for state transitions."
   },
   {
    "fieldname": "action_value",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Action Value",
-   "description": "URL, Workflow Action Name, or White-listed Method",
+   "description": "URL (https://...), Workflow Action Name (Approve), or Whitelisted Method Name (on_verify).",
    "reqd": 1
   },
   {
@@ -39,12 +41,13 @@
    "fieldname": "btn_style",
    "fieldtype": "Select",
    "label": "Button Style",
-   "options": "default\nprimary\ndanger"
+   "options": "default\nprimary\ndanger",
+   "description": "Color theme for the button in Lark Messenger."
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
- "modified": "2026-03-15 01:00:00.000000",
+ "modified": "2026-03-15 05:30:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Notification Action",

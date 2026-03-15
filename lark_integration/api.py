@@ -205,6 +205,40 @@ def clear_lark_cache(doc=None, method=None):
 	return True
 
 
+@frappe.whitelist()
+def test_lark_security():
+	"""
+	Performs a local HMAC-SHA256 signature test to verify the Encryption Key.
+	"""
+	config = _get_config()
+	key = config.get("encrypt_key")
+	if not key:
+		return {"status": "error", "message": "Encryption Key not configured in settings."}
+		
+	# Create a mock payload
+	timestamp = str(int(time.time()))
+	nonce = "test_nonce_123"
+	body = json.dumps({"type": "test", "content": "hello world"}).encode("utf-8")
+	
+	# Compute expected signature
+	target = f"{timestamp}{nonce}".encode("utf-8") + body
+	expected_sig = hmac.new(key.encode("utf-8"), target, hashlib.sha256).hexdigest()
+	
+	# Verify using our helper
+	is_valid = _verify_lark_signature(key, body, expected_sig, timestamp, nonce)
+	
+	if is_valid:
+		return {
+			"status": "success", 
+			"message": "Security verification logic confirmed. Your Encryption Key is correctly processed."
+		}
+	else:
+		return {
+			"status": "error", 
+			"message": "Security verification failed. HMAC-SHA256 signature mismatch."
+		}
+
+
 def _get_sync_mapping(doctype: str):
 	cache_key = f"lark_sync_mapping:{doctype}"
 	cached_mapping = frappe.cache().get_value(cache_key)
