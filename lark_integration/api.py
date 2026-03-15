@@ -2630,7 +2630,7 @@ def _sync_todo_record_to_lark(doc_name):
 		if doc.lark_task_guid:
 			# UPDATE
 			update_url = f"{url}/{doc.lark_task_guid}"
-			update_fields = ["summary", "description", "completed_at", "due", "origin"]
+			update_fields = ["summary", "description", "completed_at", "due"]
 			final_payload = {"update_fields": update_fields, "task": payload}
 			
 			_lark_request("PATCH", update_url, token=token, json=final_payload, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
