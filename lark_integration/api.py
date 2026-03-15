@@ -686,7 +686,7 @@ def _lark_request(method: str, url: str, token: str | None = None, skip_logging:
 				if '"code":1061004' in res_text:
 					tip = (
 						"💡 **Fix Tip for 403 Forbidden (1061004):**\n"
-						"1. Ensure 'Manage business files' (drive:drive) and 'Upload media' (drive:media:upload) scopes are enabled in the Lark Developer Console.\n"
+						"1. Ensure 'Manage business files' (**drive:drive**) and 'Upload images/attachments' (**drive:file:upload**) scopes are enabled in the Lark Developer Console.\n"
 						"2. You **MUST** invite your App Bot to the target folder or Bitable in the Lark UI (e.g. Share > Add Collaborator > Search App Name)."
 					)
 					frappe.log_error(title="Lark Permission Error (1061004)", message=f"{tip}\n\nURL: {url}\n{res_text}")
