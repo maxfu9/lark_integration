@@ -27,6 +27,30 @@ def create_custom_fields_if_missing():
                 "insert_after": "lark_user_id",
                 "read_only": 1,
                 "hidden": 1
+            },
+            {
+                "fieldname": "lark_user_access_token",
+                "label": "Lark User Access Token",
+                "fieldtype": "Data",
+                "insert_after": "lark_sync_token",
+                "read_only": 1,
+                "hidden": 1
+            },
+            {
+                "fieldname": "lark_user_refresh_token",
+                "label": "Lark User Refresh Token",
+                "fieldtype": "Data",
+                "insert_after": "lark_user_access_token",
+                "read_only": 1,
+                "hidden": 1
+            },
+            {
+                "fieldname": "lark_user_token_expires_at",
+                "label": "Lark User Token Expires At",
+                "fieldtype": "Datetime",
+                "insert_after": "lark_user_refresh_token",
+                "read_only": 1,
+                "hidden": 1
             }
         ],
         "ToDo": [

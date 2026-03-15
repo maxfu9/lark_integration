@@ -815,6 +815,144 @@ def get_lark_token(force_refresh: bool = False):
 	return token
 
 
+def _get_lark_user_token(user):
+	"""Get (and refresh if needed) a user's Lark access token."""
+	if not user:
+		return None
+
+	fields = ["lark_user_access_token", "lark_user_refresh_token", "lark_user_token_expires_at"]
+	row = frappe.db.get_value("User", user, fields, as_dict=True)
+	if not row:
+		return None
+
+	access_token = row.lark_user_access_token
+	refresh_token = row.lark_user_refresh_token
+	expires_at = row.lark_user_token_expires_at
+
+	if access_token and expires_at:
+		try:
+			from frappe.utils import get_datetime, now_datetime
+			if get_datetime(expires_at) > now_datetime():
+				return access_token
+		except Exception:
+			pass
+
+	# Refresh if possible
+	if refresh_token:
+		app_token = get_lark_token()
+		if not app_token:
+			return None
+		refresh_url = f"{LARK_BASE_URL}/authen/v1/refresh_access_token"
+		res = _lark_request(
+			"POST",
+			refresh_url,
+			token=app_token,
+			json={"grant_type": "refresh_token", "refresh_token": refresh_token},
+			skip_logging=True
+		)
+		if res and res.get("data"):
+			data = res["data"]
+			new_access = data.get("access_token")
+			new_refresh = data.get("refresh_token")
+			expires_in = int(data.get("expires_in") or 0)
+
+			if new_access:
+				from frappe.utils import now_datetime
+				expires_at = now_datetime() + timedelta(seconds=max(expires_in - 60, 0))
+				frappe.db.set_value(
+					"User",
+					user,
+					{
+						"lark_user_access_token": new_access,
+						"lark_user_refresh_token": new_refresh or refresh_token,
+						"lark_user_token_expires_at": expires_at
+					},
+					update_modified=False
+				)
+				frappe.db.commit()
+				return new_access
+
+	return None
+
+
+@frappe.whitelist()
+def get_lark_oauth_url():
+	"""Return Lark OAuth URL for current user to authorize."""
+	config = _get_config()
+	app_id = config.get("app_id")
+	if not app_id:
+		return {"status": "error", "message": "Missing Lark app_id"}
+
+	from urllib.parse import quote
+	from frappe.utils import get_url
+
+	redirect_uri = get_url("/api/method/lark_integration.api.lark_oauth_callback")
+	state = frappe.generate_hash(length=24)
+	frappe.cache().set_value(f"lark_oauth_state:{state}", frappe.session.user, expires_in_sec=600)
+
+	auth_url = f"{LARK_BASE_URL}/authen/v1/index?app_id={quote(app_id)}&redirect_uri={quote(redirect_uri, safe='')}&state={quote(state)}"
+	return {"status": "success", "url": auth_url}
+
+
+@frappe.whitelist()
+def get_lark_oauth_status():
+	"""Return whether current user has a valid Lark user token."""
+	user = frappe.session.user
+	token = _get_lark_user_token(user)
+	return {"status": "success", "connected": bool(token)}
+
+
+@frappe.whitelist(allow_guest=True)
+def lark_oauth_callback(code=None, state=None):
+	"""OAuth callback to store user access/refresh token."""
+	if not code or not state:
+		return "Missing code/state."
+
+	user = frappe.cache().get_value(f"lark_oauth_state:{state}")
+	if not user:
+		return "Invalid or expired state."
+
+	app_token = get_lark_token()
+	if not app_token:
+		return "Failed to get app token."
+
+	access_url = f"{LARK_BASE_URL}/authen/v1/access_token"
+	res = _lark_request(
+		"POST",
+		access_url,
+		token=app_token,
+		json={"grant_type": "authorization_code", "code": code},
+		skip_logging=True
+	)
+
+	if not res or not res.get("data"):
+		return "Failed to exchange code."
+
+	data = res["data"]
+	user_access = data.get("access_token")
+	user_refresh = data.get("refresh_token")
+	expires_in = int(data.get("expires_in") or 0)
+
+	if not user_access:
+		return "No access token returned."
+
+	from frappe.utils import now_datetime
+	expires_at = now_datetime() + timedelta(seconds=max(expires_in - 60, 0))
+	frappe.db.set_value(
+		"User",
+		user,
+		{
+			"lark_user_access_token": user_access,
+			"lark_user_refresh_token": user_refresh,
+			"lark_user_token_expires_at": expires_at
+		},
+		update_modified=False
+	)
+	frappe.db.commit()
+
+	return "Lark account connected. You can close this tab."
+
+
 def _get_notification_context(doc, is_new=False):
 	"""
 	Helper to deduce the action verb and emoji based on document status.
@@ -1025,7 +1163,7 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 	if not config.get("enabled"):
 		return
 
-	token = get_lark_token()
+	token = _get_lark_user_token(doc.owner) or get_lark_token()
 	if not token:
 		return
 
@@ -3131,14 +3269,15 @@ def delete_lark_event(doc, method=None):
 		"lark_integration.api._delete_lark_event_job",
 		event_id=doc.lark_event_id,
 		calendar_id=doc.lark_calendar_id,
+		owner=doc.owner,
 		queue="long",
 		enqueue_after_commit=True
 	)
 
 
-def _delete_lark_event_job(event_id, calendar_id):
+def _delete_lark_event_job(event_id, calendar_id, owner=None):
 	"""Background job to delete a Lark event."""
-	token = get_lark_token()
+	token = _get_lark_user_token(owner) or get_lark_token()
 	if not token:
 		return
 
@@ -3211,6 +3350,7 @@ def pull_lark_calendar_events(publish_progress=False):
 				"id": c.lark_calendar_id, 
 				"label": c.name, 
 				"docname": c.name, 
+				"owner": c.owner,
 				"sync_token": frappe.db.get_value("Lark Calendar", c.name, "sync_token")
 			})
 	for u in legacy_users:
@@ -3218,6 +3358,7 @@ def pull_lark_calendar_events(publish_progress=False):
 			"id": u.lark_user_id, 
 			"label": f"Primary ({u.name})", 
 			"user": u.name, 
+			"owner": u.name,
 			"sync_token": frappe.db.get_value("User", u.name, "lark_sync_token")
 		})
 
@@ -3226,6 +3367,8 @@ def pull_lark_calendar_events(publish_progress=False):
 
 	for idx, target in enumerate(sync_targets):
 		calendar_id = target["id"]
+		target_owner = target.get("owner")
+		target_token = _get_lark_user_token(target_owner) or token
 		
 		if publish_progress:
 			prog = 10 + int((idx / active_target_count) * 80)
@@ -3241,7 +3384,7 @@ def pull_lark_calendar_events(publish_progress=False):
 			if page_token:
 				params["page_token"] = page_token
 			
-			res = _lark_request("GET", list_url, token=token, params=params)
+			res = _lark_request("GET", list_url, token=target_token, params=params)
 			
 			if not res or "data" not in res:
 				break
@@ -3334,9 +3477,9 @@ def create_lark_calendar(doc_name):
 	if doc.lark_calendar_id:
 		frappe.throw("This calendar is already linked to Lark.")
 
-	token = get_lark_token()
+	token = _get_lark_user_token(doc.owner) or _get_lark_user_token(frappe.session.user)
 	if not token:
-		return
+		return {"status": "error", "message": "Connect your Lark account first (OAuth)."}
 
 	payload = {
 		"summary": doc.calendar_name,
@@ -3355,10 +3498,11 @@ def create_lark_calendar(doc_name):
 			lark_id = frappe.db.get_value("User", user_name, "lark_user_id")
 			if lark_id:
 				try:
-					members_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{calendar_id}/members"
-					_lark_request("POST", members_url, token=token, json={
-						"members": [{"member_id": lark_id, "member_type": "user", "role": "writer"}]
-					}, params={"member_id_type": "user_id"})
+					acl_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{calendar_id}/acls"
+					_lark_request("POST", acl_url, token=token, json={
+						"role": "writer",
+						"scope": {"type": "user", "user_id": lark_id}
+					}, params={"user_id_type": "user_id"})
 				except Exception:
 					# Non-critical: calendar is created even if we can't add members
 					pass
@@ -3374,19 +3518,20 @@ def join_lark_calendar(doc_name):
 	if not doc.lark_calendar_id:
 		return {"status": "error", "message": "Calendar is not linked to Lark."}
 
-	token = get_lark_token()
+	token = _get_lark_user_token(doc.owner) or _get_lark_user_token(frappe.session.user)
 	if not token:
-		return {"status": "error", "message": "No Lark token"}
+		return {"status": "error", "message": "Connect your Lark account first (OAuth)."}
 
 	users_to_add = set(filter(None, [doc.owner, frappe.session.user]))
 	for user_name in users_to_add:
 		lark_id = frappe.db.get_value("User", user_name, "lark_user_id")
 		if lark_id:
 			try:
-				members_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{doc.lark_calendar_id}/members"
-				_lark_request("POST", members_url, token=token, json={
-					"members": [{"member_id": lark_id, "member_type": "user", "role": "writer"}]
-				}, params={"member_id_type": "user_id"})
+				acl_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{doc.lark_calendar_id}/acls"
+				_lark_request("POST", acl_url, token=token, json={
+					"role": "writer",
+					"scope": {"type": "user", "user_id": lark_id}
+				}, params={"user_id_type": "user_id"})
 			except Exception:
 				pass
 
