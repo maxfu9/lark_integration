@@ -3099,68 +3099,64 @@ def pull_lark_calendar_events(publish_progress=False):
 				if not event_id:
 					continue
 
-			page_token = data.get("page_token")
-			if not page_token:
-				break
+				# Find existing
+				event_name = frappe.db.get_value("Event", {"lark_event_id": event_id}, "name")
+				
+				# If cancelled, handle deletion/closing
+				if item.get("status") == "cancelled":
+					if event_name:
+						frappe.db.set_value("Event", event_name, "status", "Closed")
+						synced_total += 1
+					continue
+				
+				# Resolve Owner to respect native ERPNext permissions
+				event_owner = target.get("user") or target.get("owner") or frappe.session.user
 
-			# Find existing
-			event_name = frappe.db.get_value("Event", {"lark_event_id": event_id}, "name")
-			
-			# If cancelled, handle deletion/closing
-			if item.get("status") == "cancelled":
-				if event_name:
-					frappe.db.set_value("Event", event_name, "status", "Closed")
+				if not event_name:
+					# CREATE new Event
+					lark_start = int(item["start_time"].get("timestamp", 0))
+					lark_end = int(item["end_time"].get("timestamp", 0))
+					event = frappe.get_doc({
+						"doctype": "Event",
+						"subject": item.get("summary") or "(No Subject)",
+						"starts_on": get_datetime(lark_start),
+						"ends_on": get_datetime(lark_end),
+						"lark_event_id": event_id,
+						"owner": event_owner,
+						"event_type": "Private"
+					})
+					event._sync_from_lark = True
+					event.insert(ignore_permissions=True)
 					synced_total += 1
-				continue
-			
-			# Resolve Owner to respect native ERPNext permissions
-			event_owner = target.get("user") or target.get("owner") or frappe.session.user
-
-			if not event_name:
-				# CREATE new Event
+					continue
+				
+				event = frappe.get_doc("Event", event_name)
+				
 				lark_start = int(item["start_time"].get("timestamp", 0))
 				lark_end = int(item["end_time"].get("timestamp", 0))
-				event = frappe.get_doc({
-					"doctype": "Event",
-					"subject": item.get("summary") or "(No Subject)",
-					"starts_on": get_datetime(lark_start),
-					"ends_on": get_datetime(lark_end),
-					"lark_event_id": event_id,
-					"owner": event_owner,
-					"event_type": "Private"
-				})
-				event._sync_from_lark = True
-				event.insert(ignore_permissions=True)
-				synced_total += 1
-				continue
-			
-			event = frappe.get_doc("Event", event_name)
-			
-			lark_start = int(item["start_time"].get("timestamp", 0))
-			lark_end = int(item["end_time"].get("timestamp", 0))
-			
-			erp_start = int(get_datetime(event.starts_on).timestamp())
-			erp_end = int(get_datetime(event.ends_on).timestamp()) if event.ends_on else erp_start
+				
+				erp_start = int(get_datetime(event.starts_on).timestamp())
+				erp_end = int(get_datetime(event.ends_on).timestamp()) if event.ends_on else erp_start
 
-			changed = False
-			if abs(lark_start - erp_start) > 60: # Threshold for drift
-				event.starts_on = get_datetime(lark_start)
-				changed = True
-			
-			if abs(lark_end - erp_end) > 60:
-				event.ends_on = get_datetime(lark_end)
-				changed = True
+				changed = False
+				if abs(lark_start - erp_start) > 60: # Threshold for drift
+					event.starts_on = get_datetime(lark_start)
+					changed = True
+				
+				if abs(lark_end - erp_end) > 60:
+					event.ends_on = get_datetime(lark_end)
+					changed = True
 
-			if item.get("summary") and item["summary"] != event.subject:
-				event.subject = item["summary"]
-				changed = True
+				if item.get("summary") and item["summary"] != event.subject:
+					event.subject = item["summary"]
+					changed = True
 
-			if changed:
-				event.db_set("starts_on", event.starts_on, update_modified=True)
-				event.db_set("ends_on", event.ends_on, update_modified=True)
-				event.db_set("subject", event.subject, update_modified=True)
-				event.db_set("_sync_from_lark", True, update_modified=False)
-				synced_total += 1
+				if changed:
+					event.db_set("starts_on", event.starts_on, update_modified=True)
+					event.db_set("ends_on", event.ends_on, update_modified=True)
+					event.db_set("subject", event.subject, update_modified=True)
+					event.db_set("_sync_from_lark", True, update_modified=False)
+					synced_total += 1
 
 	settings.last_calendar_sync_on = get_datetime()
 	settings.save(ignore_permissions=True)
