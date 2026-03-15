@@ -678,7 +678,18 @@ def _lark_request(method: str, url: str, token: str | None = None, skip_logging:
 				"attempt_count": attempt + 1
 			}
 			try:
-				detail["body"] = response.text if response is not None else None
+				res_text = response.text if response is not None else ""
+				detail["body"] = res_text
+				
+				# Specialized diagnostic for common Lark configuration errors (1061004 = Forbidden)
+				# This usually means missing drive:drive / drive:media:upload scopes OR Bot not invited to folder/Bitable.
+				if '"code":1061004' in res_text:
+					tip = (
+						"💡 **Fix Tip for 403 Forbidden (1061004):**\n"
+						"1. Ensure 'Manage business files' (drive:drive) and 'Upload media' (drive:media:upload) scopes are enabled in the Lark Developer Console.\n"
+						"2. You **MUST** invite your App Bot to the target folder or Bitable in the Lark UI (e.g. Share > Add Collaborator > Search App Name)."
+					)
+					frappe.log_error(title="Lark Permission Error (1061004)", message=f"{tip}\n\nURL: {url}\n{res_text}")
 			except Exception:
 				detail["body"] = None
 			
@@ -1188,6 +1199,7 @@ def upload_pdf_to_lark(doc, token, app_token):
 			"parent_type": "bitable_file",
 			"parent_node": app_token,
 			"size": len(pdf_content),
+			"media_type": "pdf"
 		}
 		files = {"file": (f"{doc.name}.pdf", pdf_content, "application/pdf")}
 		payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=doc.doctype, reference_name=doc.name)
@@ -1313,6 +1325,7 @@ def upload_to_lark_drive(file_name: str, content: bytes, token: str, folder_toke
 		"parent_type": LARK_DRIVE_PARENT_TYPE,
 		"parent_node": folder_token,
 		"size": len(content),
+		"media_type": "file"
 	}
 	files = {"file": (file_name, content, "application/octet-stream")}
 	payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=reference_doctype, reference_name=reference_name)
@@ -1330,6 +1343,7 @@ def upload_attachment_to_bitable(file_name: str, content: bytes, token: str, app
 		"parent_type": "bitable_file",
 		"parent_node": app_token,
 		"size": len(content),
+		"media_type": "file"
 	}
 	files = {"file": (file_name, content, "application/octet-stream")}
 	payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=reference_doctype, reference_name=reference_name)
