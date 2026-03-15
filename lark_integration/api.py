@@ -1521,11 +1521,15 @@ def sync_doc_attachments_to_lark_drive(doc, token: str, config: dict):
 		return
 
 	# Explicitly skip Drive upload if the document's sync mode forbids it.
+	sync_mode = "Both" 
 	mapping = _get_sync_mapping(doc.doctype)
 	if mapping:
 		sync_mode = mapping.get("attachment_sync_mode", "Both")
 		if sync_mode in ("Base Only", "None"):
 			return
+	else:
+		# If no mapping exists, we only support Drive upload if enabled in config
+		sync_mode = "Drive Only"
 
 	files = frappe.get_all(
 		"File",
@@ -1539,6 +1543,8 @@ def sync_doc_attachments_to_lark_drive(doc, token: str, config: dict):
 			
 			# Optimization: Reuse existing tokens if available
 			existing_proxy = frappe.db.get_value("Lark Drive File", {"source_file": row.name}, ["lark_file_token", "bitable_token", "lark_folder_token"], as_dict=1)
+			
+			drive_enabled = config.get("drive_upload_enabled") and config.get("drive_folder_token")
 			
 			file_url_str = str(row.file_url or "")
 			if file_url_str.startswith("http"):
@@ -1566,8 +1572,6 @@ def sync_doc_attachments_to_lark_drive(doc, token: str, config: dict):
 				else:
 					b_token = upload_attachment_to_bitable(row.file_name, content, token, mapping["app_token"], reference_doctype=doc.doctype, reference_name=doc.name)
 
-			drive_enabled = config.get("drive_upload_enabled") and config.get("drive_folder_token")
-			
 			lark_file_token = None
 			effective_folder_token = None
 			if drive_enabled and sync_mode in ("Drive Only", "Both"):
