@@ -138,7 +138,7 @@ def _get_config():
 
 	if settings:
 		config["app_id"] = settings.app_id or config["app_id"]
-		config["app_secret"] = settings.get_password("app_secret") or config["app_secret"]
+		config["app_secret"] = settings.get_password("app_secret", raise_exception=False) or config["app_secret"]
 		config["request_timeout"] = _safe_int(settings.request_timeout, config["request_timeout"])
 
 		if settings.drive_upload_enabled is not None:
@@ -151,7 +151,7 @@ def _get_config():
 		config["error_notification_chat_id"] = settings.error_notification_chat_id or ""
 		config["notify_on_sync_success"] = bool(settings.notify_on_sync_success)
 		config["notify_on_batch_success"] = bool(settings.notify_on_batch_success)
-		config["encrypt_key"] = settings.get_password("encrypt_key")
+		config["encrypt_key"] = settings.get_password("encrypt_key", raise_exception=False)
 		config["verification_token"] = settings.verification_token
 		
 		# Role-based chat registry
