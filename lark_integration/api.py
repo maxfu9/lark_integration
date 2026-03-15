@@ -2631,7 +2631,10 @@ def _sync_todo_record_to_lark(doc_name):
 			# UPDATE
 			update_url = f"{url}/{doc.lark_task_guid}"
 			update_fields = ["summary", "description", "completed_at", "due"]
-			final_payload = {"update_fields": update_fields, "task": payload}
+			
+			# Filter payload to only include fields in update_fields to prevent 400 Bad Request
+			filtered_task = {k: v for k, v in payload.items() if k in update_fields}
+			final_payload = {"update_fields": update_fields, "task": filtered_task}
 			
 			_lark_request("PATCH", update_url, token=token, json=final_payload, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
 
@@ -3714,10 +3717,14 @@ def link_lark_task_list(doc_name, guid):
 	# Add the current user as an editor on the Lark task list so the app can access it
 	current_lark_id = frappe.db.get_value("User", frappe.session.user, "lark_user_id")
 	if current_lark_id:
-		url = f"{LARK_BASE_URL}/task/v2/tasklists/{guid}/add_members"
-		_lark_request("POST", url, token=token, json={
-			"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
-		}, params={"user_id_type": "user_id"})
+		try:
+			url = f"{LARK_BASE_URL}/task/v2/tasklists/{guid}/add_members"
+			_lark_request("POST", url, token=token, json={
+				"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
+			}, params={"user_id_type": "user_id"})
+		except Exception:
+			# If the app lacks permission to add members, we log it but don't fail the link process
+			frappe.log_error(title="Lark Integration: Failed to add member to Task List during linking", message=frappe.get_traceback())
 
 	clear_lark_cache()
 	return {"status": "success"}
