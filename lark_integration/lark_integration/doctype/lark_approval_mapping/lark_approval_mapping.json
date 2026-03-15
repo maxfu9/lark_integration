@@ -9,10 +9,13 @@
   "enabled",
   "document_type",
   "trigger_workflow_state",
+  "sb_workflow",
   "approve_action",
   "reject_action",
   "approval_code",
+  "sb_signature",
   "signature_required",
+  "sb_fields",
   "field_mappings"
  ],
  "fields": [
@@ -43,6 +46,11 @@
    "description": "The exact name of the Workflow State that triggers the Lark Approval (e.g., 'Pending Approval')."
   },
   {
+   "fieldname": "sb_workflow",
+   "fieldtype": "Section Break",
+   "label": "Workflow & Approval Def"
+  },
+  {
    "fieldname": "approve_action",
    "fieldtype": "Data",
    "label": "ERPNext Approve Action",
@@ -62,11 +70,21 @@
    "description": "The unique code from your Lark Approval Definition."
   },
   {
+   "fieldname": "sb_signature",
+   "fieldtype": "Section Break",
+   "label": "Signature Settings"
+  },
+  {
    "default": "0",
    "fieldname": "signature_required",
    "fieldtype": "Check",
    "label": "Signature Required",
    "description": "If enabled, Lark will require a digital signature to complete the approval."
+  },
+  {
+   "fieldname": "sb_fields",
+   "fieldtype": "Section Break",
+   "label": "Form Mappings"
   },
   {
    "fieldname": "field_mappings",
@@ -78,7 +96,7 @@
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-15 01:00:00.000000",
+ "modified": "2026-03-15 06:30:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Approval Mapping",

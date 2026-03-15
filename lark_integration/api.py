@@ -20,11 +20,14 @@ def _verify_lark_signature(key, body_bytes, signature, timestamp, nonce):
 	Verifies the authenticity of a Lark webhook request using HMAC-SHA256.
 	Lark Signatures are computed as: HMAC-SHA256(key, timestamp + nonce + body)
 	"""
-	if not key or not signature:
+	if not key or not signature or not timestamp:
 		return False
 		
 	# 1. Construct target string
-	target = f"{timestamp}{nonce}".encode("utf-8") + body_bytes
+	try:
+		target = f"{timestamp}{nonce}".encode("utf-8") + body_bytes
+	except Exception:
+		return False
 	
 	# 2. Compute local signature
 	local_sig = hmac.new(key.encode("utf-8"), target, hashlib.sha256).hexdigest()
@@ -3341,12 +3344,15 @@ def trigger_lark_signature(doc, instance_code, token):
 		if not file_key:
 			return
 		
-		# 3. Attach to Approval instance via V4 API (Add comment with file or specific attachment field)
-		# Note: Lark V4 signatures can be triggered by adding a 'file' type widget in the approval form
-		# If the form has a field named 'seal' or similar, we update it.
-		# For this implementation, we log the intent. 
-		# Real-world Lark Seals often require pre-configuring the template with a Seal widget.
-		doc.add_comment("Comment", f"PDF attached for Lark Signature: {doc.name}.pdf")
+		# 3. Attach to Approval instance as a comment
+		comment_url = f"{LARK_BASE_URL}/approval/v4/instances/{instance_code}/comments"
+		comment_payload = {
+			"content": f"Please sign the attached document for {doc.doctype} {doc.name}.",
+			"files": [{"file_key": file_key}]
+		}
+		_lark_request("POST", comment_url, token=token, json=comment_payload)
+		
+		doc.add_comment("Comment", f"PDF attached for Lark Signature: [Lark File Key: {file_key}]")
 		
 	except Exception:
 		frappe.log_error(f"Lark Signature Trigger Fail: {doc.doctype} {doc.name}", frappe.get_traceback())
@@ -3671,25 +3677,51 @@ def handle_interactive_card():
 	if not (action_type and action_value and doc_doctype and doc_name):
 		return {"toast": {"type": "error", "content": "Invalid interaction payload"}}
 
+	# 4. Resolve Operator Identity & Permissions
+	lark_operator_id = data.get("operator", {}).get("open_id")
+	erp_user = frappe.db.get_value("User", {"lark_user_id": lark_operator_id}, "name") if lark_operator_id else None
+	
+	if not erp_user:
+		return {"toast": {"type": "error", "content": "Your Lark account is not linked to an ERPNext user."}}
+
+	# Switch session safely
+	original_user = frappe.session.user
+	frappe.set_user(erp_user)
+
 	try:
 		doc = frappe.get_doc(doc_doctype, doc_name)
 		
-		# 4. Process Action
+		# Verify permission for the action
+		if not doc.has_permission("write"):
+			return {"toast": {"type": "error", "content": f"Permission Denied: You do not have 'Write' access to {doc_doctype}"}}
+		
+		# 5. Process Action
 		if action_type == "Workflow Action":
 			from frappe.model.workflow import apply_workflow
 			apply_workflow(doc, action_value)
 			message = f"Document updated to state: **{doc.workflow_state}**"
 			
 		elif action_type == "Method":
-			# Call whitelisted method on doc
-			getattr(doc, action_value)()
-			message = f"Method '{action_value}' executed successfully"
+			# Verify the method is whitelisted or safe
+			if hasattr(doc, action_value):
+				getattr(doc, action_value)()
+				message = f"Method '{action_value}' executed successfully"
+			else:
+				return {"toast": {"type": "error", "content": f"Method '{action_value}' not found on {doc_doctype}"}}
 		
 		else:
 			return {"toast": {"type": "error", "content": f"Unsupported action type: {action_type}"}}
 
-		# 5. Dynamic Card Update (Optional but polite)
-		# We include a link back to the ERPNext document for convenience
+	except Exception as e:
+		frappe.log_error("Lark Card Interaction Failed", frappe.get_traceback())
+		return {"toast": {"type": "error", "content": f"Interaction Error: {str(e)}"}}
+	finally:
+		# Restore session
+		frappe.set_user(original_user)
+
+	# 5. Dynamic Card Update (Optional but polite)
+	# We include a link back to the ERPNext document for convenience
+	try:
 		doc_url = f"{frappe.utils.get_url()}/app/{doc_doctype.lower().replace(' ', '-')}/{doc_name}"
 		
 		return {
@@ -3705,27 +3737,28 @@ def handle_interactive_card():
 				{
 					"tag": "div",
 					"text": {
-						"content": f"**Target:** [{doc_name}]({doc_url})\n**Action:** {action_value}\n**Result:** {message}",
+						"content": f"**Result**: {message}\n\n🕒 **Timestamp**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
 						"tag": "lark_md"
 					}
 				},
 				{
-					"tag": "hr"
-				},
-				{
-					"tag": "note",
-					"text": {
-						"content": f"Processed at: {frappe.utils.get_datetime_str(frappe.utils.now_datetime())}",
-						"tag": "plain_text"
-					}
+					"tag": "action",
+					"actions": [
+						{
+							"tag": "button",
+							"text": {
+								"content": "View in ERPNext",
+								"tag": "plain_text"
+							},
+							"url": doc_url,
+							"type": "primary"
+						}
+					]
 				}
 			]
 		}
-
-	except Exception as e:
-		frappe.log_error("Lark Card Interaction Error", frappe.get_traceback())
-		return {"toast": {"type": "error", "content": f"System Error: {str(e)}"}}
-
+	except Exception:
+		return {"toast": {"type": "info", "content": "Action processed, but card update failed"}}
 
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""

@@ -43,7 +43,8 @@
    "fieldtype": "Link",
    "label": "Document Type",
    "options": "DocType",
-   "reqd": 1
+   "reqd": 1,
+   "description": "Select the ERPNext DocType to monitor."
   },
   {
    "default": "Lark Messenger",
@@ -63,14 +64,15 @@
    "fieldtype": "Select",
    "label": "Event",
    "options": "New\nSave\nSubmit\nCancel\nValue Change\nMethod\nDays Before\nDays After",
-   "reqd": 1
+   "reqd": 1,
+   "description": "Trigger event. 'Value Change' requires a field. 'Method' triggers on controller method calls."
   },
   {
    "depends_on": "eval:doc.event == 'Value Change'",
    "fieldname": "changed_field",
    "fieldtype": "Select",
    "label": "Changed Field",
-   "description": "Trigger when this field is modified."
+   "description": "Trigger when this specific field is modified (e.g., 'status')."
   },
   {
    "fieldname": "cb_target",
@@ -81,20 +83,21 @@
    "fieldname": "method",
    "fieldtype": "Data",
    "label": "Method",
-   "description": "Trigger on this controller method."
+   "description": "Trigger on this whitelisted controller method name (e.g., 'on_submit')."
   },
   {
    "depends_on": "eval:['Days Before', 'Days After'].includes(doc.event)",
    "fieldname": "date_changed",
    "fieldtype": "Select",
    "label": "Date Field",
-   "description": "Field to monitor for date-based trigger."
+   "description": "Field to monitor for date-based trigger (e.g., 'due_date')."
   },
   {
    "depends_on": "eval:['Days Before', 'Days After'].includes(doc.event)",
    "fieldname": "days_before_after",
    "fieldtype": "Int",
-   "label": "Days Before/After"
+   "label": "Days Before/After",
+   "description": "Number of days before or after the 'Date Field' value."
   },
   {
    "fieldname": "sb_conditions",
@@ -106,7 +109,7 @@
    "fieldtype": "Code",
    "label": "Condition",
    "options": "Python",
-   "description": "Optional: Python condition (e.g., doc.status == 'Open')"
+   "description": "Optional: Python condition evaluated before sending (e.g., doc.total > 1000)."
   },
   {
    "fieldname": "cb_attach",
@@ -115,7 +118,8 @@
   {
    "fieldname": "attach_print",
    "fieldtype": "Check",
-   "label": "Attach Print"
+   "label": "Attach Print",
+   "description": "If enabled, a PDF of the document will be attached to the Lark message."
   },
   {
    "depends_on": "eval:doc.attach_print == 1",
@@ -185,7 +189,7 @@
   }
  ],
  "index_web_pages_for_search": 1,
- "modified": "2026-03-15 01:00:00.000000",
+ "modified": "2026-03-15 06:35:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Notification",
