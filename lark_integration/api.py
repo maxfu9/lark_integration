@@ -1517,19 +1517,21 @@ def _replace_attachment_with_lark_proxy(file_doc, lark_file_token: str, folder_t
 
 
 def sync_doc_attachments_to_lark_drive(doc, token: str, config: dict):
-	if not config.get("drive_upload_enabled") or not config.get("drive_folder_token"):
-		return
-
-	# Explicitly skip Drive upload if the document's sync mode forbids it.
-	sync_mode = "Both" 
 	mapping = _get_sync_mapping(doc.doctype)
+	sync_mode = "Both"
 	if mapping:
 		sync_mode = mapping.get("attachment_sync_mode", "Both")
-		if sync_mode in ("Base Only", "None"):
-			return
 	else:
-		# If no mapping exists, we only support Drive upload if enabled in config
 		sync_mode = "Drive Only"
+
+	if sync_mode == "None":
+		return
+
+	drive_enabled = config.get("drive_upload_enabled") and config.get("drive_folder_token")
+	
+	# If Drive is disabled AND we aren't doing Bitable-Only (Base Only), we can't do anything.
+	if not drive_enabled and sync_mode != "Base Only":
+		return
 
 	files = frappe.get_all(
 		"File",
