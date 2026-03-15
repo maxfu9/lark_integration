@@ -2526,21 +2526,34 @@ def handle_todo_before_insert(doc, method=None):
 
 def _sync_todo_record_to_lark(doc_name):
 	"""Background job to sync a specific ToDo to Lark."""
+	import time
+	lock_key = f"lark_todo_sync_lock_{doc_name}"
+	
+	# Wait for up to 5 seconds if another sync is already in progress
+	# this prevents race conditions where multiple updates create multiple Lark tasks
+	wait_retries = 10
+	while frappe.cache().get_value(lock_key) and wait_retries > 0:
+		time.sleep(0.5)
+		wait_retries -= 1
+	
+	# Set lock for 60 seconds
+	frappe.cache().set_value(lock_key, 1, expires_in_sec=60)
+
 	try:
-		doc = frappe.get_doc("ToDo", doc_name)
-	except frappe.DoesNotExistError:
-		return
+		try:
+			doc = frappe.get_doc("ToDo", doc_name)
+		except frappe.DoesNotExistError:
+			return
 
-	# Avoid loops from pull_lark_tasks
-	if getattr(doc, "_sync_from_lark", False):
-		return
+		# Avoid loops from pull_lark_tasks
+		if getattr(doc, "_sync_from_lark", False):
+			return
 
-	# Re-check GUID from DB to avoid duplicate creation if multiple jobs were queued
-	guid_in_db = frappe.db.get_value("ToDo", doc_name, "lark_task_guid")
-	if guid_in_db:
-		doc.lark_task_guid = guid_in_db
+		# Re-check GUID from DB to avoid duplicate creation if multiple jobs were queued
+		guid_in_db = frappe.db.get_value("ToDo", doc_name, "lark_task_guid")
+		if guid_in_db:
+			doc.lark_task_guid = guid_in_db
 
-	try:
 		settings = _get_settings_doc()
 		if not settings or not settings.todo_sync_enabled:
 			return
@@ -2718,6 +2731,8 @@ def _sync_todo_record_to_lark(doc_name):
 	except Exception:
 		# Fail gracefully to allow ToDo to save in ERPNext even if Lark is down
 		frappe.log_error(title="Lark Integration: sync_todo_to_lark crash", message=frappe.get_traceback())
+	finally:
+		frappe.cache().delete_value(lock_key)
 
 
 
