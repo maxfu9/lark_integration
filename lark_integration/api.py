@@ -2630,11 +2630,12 @@ def _sync_todo_record_to_lark(doc_name):
 		if doc.lark_task_guid:
 			# UPDATE
 			update_url = f"{url}/{doc.lark_task_guid}"
-			update_fields = ["summary", "description", "completed_at", "due"]
 			
-			# Filter payload to only include fields in update_fields to prevent 400 Bad Request
-			filtered_task = {k: v for k, v in payload.items() if k in update_fields}
-			final_payload = {"update_fields": update_fields, "task": filtered_task}
+			# Filter payload to only include allowed fields for V2 PATCH
+			# Note: We use a flattened structure as update_fields param can sometimes be rejected
+			# if the API versioning is inconsistent.
+			allowed_fields = ["summary", "description", "completed_at", "due"]
+			final_payload = {k: v for k, v in payload.items() if k in allowed_fields}
 			
 			_lark_request("PATCH", update_url, token=token, json=final_payload, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
 
@@ -3723,8 +3724,9 @@ def link_lark_task_list(doc_name, guid):
 				"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
 			}, params={"user_id_type": "user_id"})
 		except Exception:
-			# If the app lacks permission to add members, we log it but don't fail the link process
-			frappe.log_error(title="Lark Integration: Failed to add member to Task List during linking", message=frappe.get_traceback())
+			# If the app lacks permission to add members (403), we ignore it silently
+			# as it's a non-critical usability step.
+			pass
 
 	clear_lark_cache()
 	return {"status": "success"}
