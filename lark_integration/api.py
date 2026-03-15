@@ -1643,6 +1643,17 @@ def handle_file_delete(doc, method=None):
 		enqueue_after_commit=True
 	)
 
+	# 3. NEW: Re-sync the parent document to update the Bitable attachment field.
+	if doc.attached_to_doctype and doc.attached_to_name:
+		frappe.enqueue(
+			"lark_integration.api.sync_universal",
+			doctype=doc.attached_to_doctype,
+			doc_name=doc.attached_to_name,
+			queue="long",
+			enqueue_after_commit=True,
+			force_sync=True # Force update to reflect removed attachment
+		)
+
 
 def _delete_lark_file_job(links, parent_doctype=None, parent_name=None):
 	"""Background job to delete files from Lark Drive."""
@@ -2344,8 +2355,8 @@ def sync_universal(doctype, doc_name, **kwargs):
 			if file_token:
 				lark_attachments.insert(0, file_token)
 				
-			if lark_attachments:
-				fields["ERP Attachment"] = [{"file_token": t} for t in lark_attachments]
+			# Send empty list if no attachments found to clear the Bitable field
+			fields["ERP Attachment"] = [{"file_token": t} for t in lark_attachments]
 
 		# PAYLOAD HASHING OPTIMIZATION
 		# Skip the API call if the data hasn't changed since the last successful sync.
