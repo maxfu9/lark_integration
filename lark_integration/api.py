@@ -2500,9 +2500,14 @@ def sync_todo_to_lark(doc, method=None):
 	if getattr(doc, "_sync_from_lark", False):
 		return
 
+	# Preserve GUID if it was cleared during update so we don't create duplicates
+	before = doc.get_doc_before_save()
+	existing_guid = before.lark_task_guid if before else None
+
 	frappe.enqueue(
 		"lark_integration.api._sync_todo_record_to_lark",
 		doc_name=doc.name,
+		existing_guid=existing_guid,
 		queue="long",
 		enqueue_after_commit=True
 	)
@@ -2524,7 +2529,7 @@ def handle_todo_before_insert(doc, method=None):
 		doc.lark_due_time = None
 
 
-def _sync_todo_record_to_lark(doc_name):
+def _sync_todo_record_to_lark(doc_name, existing_guid=None):
 	"""Background job to sync a specific ToDo to Lark."""
 	import time
 	lock_key = f"lark_todo_sync_lock_{doc_name}"
@@ -2553,6 +2558,9 @@ def _sync_todo_record_to_lark(doc_name):
 		guid_in_db = frappe.db.get_value("ToDo", doc_name, "lark_task_guid")
 		if guid_in_db:
 			doc.lark_task_guid = guid_in_db
+		elif existing_guid:
+			doc.lark_task_guid = existing_guid
+			frappe.db.set_value("ToDo", doc_name, "lark_task_guid", existing_guid, update_modified=False)
 
 		settings = _get_settings_doc()
 		if not settings or not settings.todo_sync_enabled:
@@ -2620,9 +2628,9 @@ def _sync_todo_record_to_lark(doc_name):
 					ts = int(utc_dt.timestamp() * 1000)
 					is_all_day = False
 				else:
-					local_dt = datetime.strptime(date_str, "%Y-%m-%d")
-					local_dt = local_tz.localize(local_dt)
-					utc_dt = local_dt.astimezone(timezone.utc)
+					# All-day: keep calendar date stable by using UTC midnight of the date
+					from datetime import datetime as _dt, timezone as _tz
+					utc_dt = _dt.strptime(date_str, "%Y-%m-%d").replace(tzinfo=_tz.utc)
 					ts = int(utc_dt.timestamp() * 1000)
 			except Exception:
 				from datetime import datetime as _dt, timezone as _tz
@@ -2650,7 +2658,10 @@ def _sync_todo_record_to_lark(doc_name):
 			allowed_fields = ["summary", "description", "completed_at", "due"]
 			final_payload = {k: v for k, v in payload.items() if k in allowed_fields}
 			
-			_lark_request("PATCH", update_url, token=token, json=final_payload, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
+			if final_payload:
+				update_fields = list(final_payload.keys())
+				update_body = {"update_fields": update_fields, "task": final_payload}
+				_lark_request("PATCH", update_url, token=token, json=update_body, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
 
 			# Assignees
 			if payload.get("members"):
@@ -3338,9 +3349,48 @@ def create_lark_calendar(doc_name):
 	if res and res.get("data", {}).get("calendar", {}).get("calendar_id"):
 		calendar_id = res["data"]["calendar"]["calendar_id"]
 		doc.db_set("lark_calendar_id", calendar_id)
+		# Add creator/current user for visibility in Lark UI
+		users_to_add = set(filter(None, [doc.owner, frappe.session.user]))
+		for user_name in users_to_add:
+			lark_id = frappe.db.get_value("User", user_name, "lark_user_id")
+			if lark_id:
+				try:
+					members_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{calendar_id}/members"
+					_lark_request("POST", members_url, token=token, json={
+						"members": [{"member_id": lark_id, "member_type": "user", "role": "writer"}]
+					}, params={"member_id_type": "user_id"})
+				except Exception:
+					# Non-critical: calendar is created even if we can't add members
+					pass
 		return {"status": "success", "calendar_id": calendar_id}
 	
 	return {"status": "error", "message": "Failed to create calendar in Lark."}
+
+
+@frappe.whitelist()
+def join_lark_calendar(doc_name):
+	"""Add current user as a member of an existing Lark calendar for visibility."""
+	doc = frappe.get_doc("Lark Calendar", doc_name)
+	if not doc.lark_calendar_id:
+		return {"status": "error", "message": "Calendar is not linked to Lark."}
+
+	token = get_lark_token()
+	if not token:
+		return {"status": "error", "message": "No Lark token"}
+
+	users_to_add = set(filter(None, [doc.owner, frappe.session.user]))
+	for user_name in users_to_add:
+		lark_id = frappe.db.get_value("User", user_name, "lark_user_id")
+		if lark_id:
+			try:
+				members_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{doc.lark_calendar_id}/members"
+				_lark_request("POST", members_url, token=token, json={
+					"members": [{"member_id": lark_id, "member_type": "user", "role": "writer"}]
+				}, params={"member_id_type": "user_id"})
+			except Exception:
+				pass
+
+	return {"status": "success"}
 
 
 @frappe.whitelist()
@@ -4653,6 +4703,3 @@ def clear_old_sync_queue_records():
 	frappe.db.delete("Lark Sync Queue", {"status": "Failed", "modified": ["<", cutoff_failed]})
 	
 	frappe.db.commit()
-
-
-
