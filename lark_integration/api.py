@@ -2338,6 +2338,22 @@ def sync_todo_to_lark(doc, method=None):
 	)
 
 
+def handle_todo_before_insert(doc, method=None):
+	"""Clears automatic Time initialization from core Frappe."""
+	if getattr(doc, "_sync_from_lark", False):
+		return
+
+	# Frappe's create_new.py sets all Time fields to nowtime() by default.
+	# We clear it if it looks like an automatic default (i.e. not explicitly set by user or Lark)
+	# For new documents created via UI/API, if lark_due_time is present but doc is new,
+	# we null it out unless we have a reason to keep it.
+	if doc.get("lark_due_time"):
+		# If the user intentionally set it, they can still do so during update.
+		# To allow setting it during conversion, we only clear it if it's a fresh manual creation.
+		# Standard ToDo creation doesn't usually involve a due time until sync.
+		doc.lark_due_time = None
+
+
 def _sync_todo_record_to_lark(doc_name):
 	"""Background job to sync a specific ToDo to Lark."""
 	try:

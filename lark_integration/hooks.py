@@ -27,6 +27,7 @@ doc_events = {
         "on_trash": "lark_integration.api.handle_file_delete"
     },
     "ToDo": {
+        "before_insert": "lark_integration.api.handle_todo_before_insert",
         "on_update": "lark_integration.api.sync_todo_to_lark",
         "on_trash": "lark_integration.api.delete_lark_task"
     },
