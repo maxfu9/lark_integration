@@ -1651,7 +1651,8 @@ def handle_file_delete(doc, method=None):
 			doc_name=doc.attached_to_name,
 			queue="long",
 			enqueue_after_commit=True,
-			force_sync=True # Force update to reflect removed attachment
+			force_sync=True, # Force update to reflect removed attachment
+			only_main_record=True # OPTIMIZATION: Skip child tables/PDF during deletion
 		)
 
 
@@ -2326,11 +2327,12 @@ def sync_universal(doctype, doc_name, **kwargs):
 		existing_lark_id = doc.get("lark_record_id")
 		
 		# Always sync linked references regardless of whether THIS doc is mapped to Bitable
-		# (e.g. Payment Entry is usually NOT mapped, but it must trigger Invoice sync)
-		if hasattr(doc, "references") and doc.references:
-			_sync_linked_references(doc.references)
-		elif hasattr(doc, "accounts") and doc.accounts:
-			_sync_linked_references(doc.accounts)
+		# OPTIMIZATION: Skip if only updating main record (e.g. during attachment delete)
+		if not kwargs.get("only_main_record"):
+			if hasattr(doc, "references") and doc.references:
+				_sync_linked_references(doc.references)
+			elif hasattr(doc, "accounts") and doc.accounts:
+				_sync_linked_references(doc.accounts)
 
 		token = get_lark_token()
 		config = _get_config()
@@ -2339,7 +2341,7 @@ def sync_universal(doctype, doc_name, **kwargs):
 			return
 
 		file_token = None
-		if mapping.get("sync_attachments"):
+		if mapping.get("sync_attachments") and not kwargs.get("only_main_record"):
 			file_token = upload_pdf_to_lark(doc, token, mapping["app_token"])
 
 		# Ensure attachments are uploaded to Drive BEFORE generating Bitable payload
@@ -2384,33 +2386,34 @@ def sync_universal(doctype, doc_name, **kwargs):
 			frappe.db.commit()
 
 		# Sync child tables dynamically
-		if not _sync_child_tables(doc, mapping, token, mapping["app_token"]):
-			# If manual child table sync fails or isn't configured correctly but an items_table_id exists
-			# we attempt a generic fallback using the `items` property if it exists, otherwise do nothing
-			if mapping.get("items_table_id") and hasattr(doc, "items") and doc.items:
-				item_records = [
-					{
-						"fields": {
-							mapping["key_field"]: str(doc.name),
-							"Date": _ts_ms(doc.get("posting_date") or doc.creation),
-							"Item": str(getattr(i, "item_name", getattr(i, "item_code", ""))),
-							"Qty": float(getattr(i, "qty", 0.0)),
-							"Rate": float(getattr(i, "rate", 0.0)),
-							"Amount": float(getattr(i, "amount", 0.0)),
+		if not kwargs.get("only_main_record"):
+			if not _sync_child_tables(doc, mapping, token, mapping["app_token"]):
+				# If manual child table sync fails or isn't configured correctly but an items_table_id exists
+				# we attempt a generic fallback using the `items` property if it exists, otherwise do nothing
+				if mapping.get("items_table_id") and hasattr(doc, "items") and doc.items:
+					item_records = [
+						{
+							"fields": {
+								mapping["key_field"]: str(doc.name),
+								"Date": _ts_ms(doc.get("posting_date") or doc.creation),
+								"Item": str(getattr(i, "item_name", getattr(i, "item_code", ""))),
+								"Qty": float(getattr(i, "qty", 0.0)),
+								"Rate": float(getattr(i, "rate", 0.0)),
+								"Amount": float(getattr(i, "amount", 0.0)),
+							}
 						}
-					}
-					for i in doc.items
-				]
-				clear_and_sync_items(
-					mapping.get("items_table_id"),
-					mapping["key_field"],
-					doc.name,
-					item_records,
-					token,
-					mapping["app_token"],
-					reference_doctype=doc.doctype,
-					reference_name=doc.name
-				)
+						for i in doc.items
+					]
+					clear_and_sync_items(
+						mapping.get("items_table_id"),
+						mapping["key_field"],
+						doc.name,
+						item_records,
+						token,
+						mapping["app_token"],
+						reference_doctype=doc.doctype,
+						reference_name=doc.name
+					)
 		
 		# Action-Specific Success Notification
 		if config.get("notify_on_sync_success"):
