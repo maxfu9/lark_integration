@@ -146,6 +146,17 @@ def create_custom_fields_if_missing():
                         "print_hide": 1,
                         "hidden": 1
                     })
+                
+                if not any(f.get("fieldname") == "lark_last_sync_hash" for f in custom_fields[dt]):
+                    custom_fields[dt].append({
+                        "fieldname": "lark_last_sync_hash",
+                        "label": "Lark Last Sync Hash",
+                        "fieldtype": "Data",
+                        "insert_after": "lark_record_id",
+                        "read_only": 1,
+                        "print_hide": 1,
+                        "hidden": 1
+                    })
     except Exception:
         pass
 

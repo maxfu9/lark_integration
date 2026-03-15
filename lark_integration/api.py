@@ -472,6 +472,17 @@ def _build_fields_payload(doc, mapping: dict):
 	return fields
 
 
+def _calculate_doc_hash(fields: dict):
+	"""Generate a stable MD5 hash of the bitable fields to detect changes."""
+	try:
+		# Ensure we only hash JSON-serializable parts and skip dynamic links if they cause drift
+		# Actually, links based on document names are stable.
+		data_to_hash = json.dumps(fields, sort_keys=True, default=str)
+		return hashlib.md5(data_to_hash.encode("utf-8")).hexdigest()
+	except Exception:
+		return None
+
+
 def _get_doc_attachment_tokens(doc):
 	"""Fetch all Lark Drive File tokens associated with the given document."""
 	tokens = []
@@ -1356,11 +1367,26 @@ def _get_or_create_nested_folder(path_parts: list[str], parent_token: str, token
 	Iteratively find or create folders along a path.
 	Example: path_parts=["Sales Invoice", "2026", "March"]
 	"""
+	if not path_parts:
+		return parent_token
+	
+	# Optimization: check full path cache first
+	path_str = "/".join(path_parts)
+	full_cache_key = f"lark_full_path:{parent_token}:{path_str}"
+	cached_full_token = frappe.cache.get_value(full_cache_key)
+	if cached_full_token:
+		return cached_full_token
+
 	current_parent = parent_token
 	for folder_name in path_parts:
 		if not folder_name:
 			continue
 		current_parent = _get_or_create_single_folder(folder_name, current_parent, token)
+	
+	# Cache the final destination for 24 hours
+	if current_parent != parent_token:
+		frappe.cache.set_value(full_cache_key, current_parent, expires_in_sec=86400)
+
 	return current_parent
 
 
@@ -2138,6 +2164,22 @@ def handle_file_attach(doc, handler=None):
 	if not config.get("drive_upload_enabled") or not config.get("drive_folder_token"):
 		return
 
+	# 1. NEW: Check if the parent DocType is mapped to a Bitable.
+	# If yes, we trigger the Universal Sync instead of a standalone upload.
+	# This ensures Bitable tokens and Drive tokens are handled in a single transaction/job.
+	mapping = _get_sync_mapping(doc.attached_to_doctype)
+	if mapping:
+		frappe.enqueue(
+			"lark_integration.api.sync_universal",
+			doctype=doc.attached_to_doctype,
+			doc_name=doc.attached_to_name,
+			queue="long",
+			enqueue_after_commit=True,
+			force_sync=True # Force even if payload hash matches
+		)
+		return
+
+	# 2. STANDALONE: For unmapped DocTypes, use the single file worker.
 	frappe.enqueue(
 		"lark_integration.api._upload_single_file_to_drive",
 		file_name=doc.name,
@@ -2150,6 +2192,10 @@ def handle_file_attach(doc, handler=None):
 def _upload_single_file_to_drive(file_name: str):
 	"""Background job: upload a specific File doc to Lark Drive."""
 	try:
+		# Guard: check if tracking record already exists (avoid race condition)
+		if frappe.db.exists("Lark Drive File", {"source_file": file_name}):
+			return
+
 		file_doc = frappe.get_doc("File", file_name)
 
 		# Guard: skip if already a proxy or external URL
@@ -2289,13 +2335,31 @@ def sync_universal(doctype, doc_name, **kwargs):
 			if lark_attachments:
 				fields["ERP Attachment"] = [{"file_token": t} for t in lark_attachments]
 
+		# PAYLOAD HASHING OPTIMIZATION
+		# Skip the API call if the data hasn't changed since the last successful sync.
+		current_hash = _calculate_doc_hash(fields)
+		stored_hash = doc.get("lark_last_sync_hash")
+		
+		if stored_hash == current_hash and not kwargs.get("force_sync"):
+			# If everything else (child tables) is ALSO handled by hashing within their own context, 
+			# we can skip entirely. For now, we always allow child table sync unless we add hashes there too.
+			return
+
 		# Batching Optimization
 		if config.get("enable_batching") and not kwargs.get("force_immediate"):
 			enqueue_lark_sync_batch(doctype, doc_name, fields, mapping)
+			# We still want to update the hash if we queued it successfully
+			if current_hash:
+				frappe.db.set_value(doctype, doc_name, "lark_last_sync_hash", current_hash, update_modified=False)
 			return
 
 		upsert_lark_record(mapping["main_table_id"], mapping["key_field"], doc.name, fields, token, mapping["app_token"], reference_doctype=doc.doctype, reference_name=doc.name)
-			
+		
+		# Update the hash on success
+		if current_hash:
+			frappe.db.set_value(doctype, doc_name, "lark_last_sync_hash", current_hash, update_modified=False)
+			frappe.db.commit()
+
 		# Sync child tables dynamically
 		if not _sync_child_tables(doc, mapping, token, mapping["app_token"]):
 			# If manual child table sync fails or isn't configured correctly but an items_table_id exists
