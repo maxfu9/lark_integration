@@ -3383,6 +3383,10 @@ def _process_lark_approval_trigger(doctype, docname):
 	if not _doctype_available("Lark Approval Mapping"):
 		return
 
+	# Safety check for existence (prevents DoesNotExistError if doc was deleted before job runs)
+	if not frappe.db.exists(doctype, docname):
+		return
+
 	doc = frappe.get_doc(doctype, docname)
 	
 	# 1. Look for mapping for this doctype
