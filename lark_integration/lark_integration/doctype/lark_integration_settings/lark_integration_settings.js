@@ -7,7 +7,9 @@ frappe.ui.form.on("Lark Integration Settings", {
 			<div style="padding: 12px; background-color: var(--blue-50); border: 1px solid var(--blue-200); border-radius: 6px; margin-bottom: 15px; font-size: 13px;">
 				<div style="font-weight: bold; color: var(--blue-700); margin-bottom: 4px;">Lark Setup Instructions</div>
 				To get your credentials, create an app in the <a href="https://open.larksuite.com/document/home/index" target="_blank" style="font-weight: bold; text-decoration: underline;">Lark Developer Console</a>. 
-				Ensure the app has <b>Contact</b>, <b>Task</b>, and <b>Calendar</b> permissions enabled.
+				Ensure the app has <b>Contact</b> (`contact:contact:readonly_as_app`), <b>Task</b>, and <b>Calendar</b> permissions enabled.
+				<br><br>
+				<b>Note:</b> You MUST invite your App Bot to target folders, Bitables, or Task Lists in the Lark UI to grant it access.
 			</div>
 		`;
 		frm.set_df_property("auth_instructions", "options", auth_html);

@@ -2641,13 +2641,13 @@ def _sync_todo_record_to_lark(doc_name):
 
 			# Assignees
 			if payload.get("members"):
-				_lark_request("POST", f"{update_url}/add_members", token=token, json={"members": payload["members"]}, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
+				_lark_request("POST", f"{update_url}/add_members", token=token, json={"members": payload["members"]}, params={"user_id_type": "user_id"}, skip_logging=True, reference_doctype="ToDo", reference_name=doc.name)
 			else:
-				detail_res = _lark_request("GET", update_url, token=token, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
+				detail_res = _lark_request("GET", update_url, token=token, params={"user_id_type": "user_id"}, skip_logging=True, reference_doctype="ToDo", reference_name=doc.name)
 				if detail_res and "data" in detail_res and "task" in detail_res["data"]:
 					existing_members = detail_res["data"]["task"].get("members", [])
 					if existing_members:
-						_lark_request("POST", f"{update_url}/remove_members", token=token, json={"member_ids": [m["id"] for m in existing_members]}, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
+						_lark_request("POST", f"{update_url}/remove_members", token=token, json={"member_ids": [m["id"] for m in existing_members]}, params={"user_id_type": "user_id"}, skip_logging=True, reference_doctype="ToDo", reference_name=doc.name)
 
 			# Reminders
 			if doc.get("lark_remind_at_due"):
@@ -3356,9 +3356,14 @@ def create_lark_task_list(doc_name):
 			lark_id = frappe.db.get_value("User", user_name, "lark_user_id")
 			if lark_id:
 				members_url = f"{url}/{guid}/add_members"
-				_lark_request("POST", members_url, token=token, json={
-					"members": [{"id": lark_id, "type": "user", "role": "editor"}]
-				}, params={"user_id_type": "user_id"})
+				try:
+					_lark_request("POST", members_url, token=token, json={
+						"members": [{"id": lark_id, "type": "user", "role": "editor"}]
+					}, params={"user_id_type": "user_id"}, skip_logging=True)
+				except Exception:
+					# Non-critical: list is already created, and some tokens
+					# are not allowed to add editors for existing lists.
+					pass
 
 		return {"status": "success", "lark_list_guid": guid}
 	
@@ -3664,10 +3669,13 @@ def fetch_lark_task_lists():
 		# Ensure current user is a member if not already (for visibility)
 		current_lark_id = frappe.db.get_value("User", frappe.session.user, "lark_user_id")
 		if current_lark_id:
-			members_url = f"{url}/{guid}/add_members"
-			_lark_request("POST", members_url, token=token, json={
-				"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
-			}, params={"user_id_type": "user_id"})
+			try:
+				members_url = f"{url}/{guid}/add_members"
+				_lark_request("POST", members_url, token=token, json={
+					"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
+				}, params={"user_id_type": "user_id"}, skip_logging=True)
+			except Exception:
+				pass
 			
 	return {"status": "success", "imported": counts}
 
@@ -3722,7 +3730,7 @@ def link_lark_task_list(doc_name, guid):
 			url = f"{LARK_BASE_URL}/task/v2/tasklists/{guid}/add_members"
 			_lark_request("POST", url, token=token, json={
 				"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
-			}, params={"user_id_type": "user_id"})
+			}, params={"user_id_type": "user_id"}, skip_logging=True)
 		except Exception:
 			# If the app lacks permission to add members (403), we ignore it silently
 			# as it's a non-critical usability step.
@@ -3769,7 +3777,7 @@ def _sync_lark_task_lists_with_erp(token):
 				if current_lark_id and current_lark_id != creator_id:
 					_lark_request("POST", f"{url}/{guid}/add_members", token=token, json={
 						"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
-					}, params={"user_id_type": "user_id"})
+					}, params={"user_id_type": "user_id"}, skip_logging=True)
 			except Exception:
 				pass
 		else:
@@ -4630,7 +4638,6 @@ def clear_old_sync_queue_records():
 	frappe.db.delete("Lark Sync Queue", {"status": "Failed", "modified": ["<", cutoff_failed]})
 	
 	frappe.db.commit()
-
 
 
 
