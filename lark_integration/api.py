@@ -266,6 +266,9 @@ def test_lark_security():
 
 
 def _get_sync_mapping(doctype: str):
+	if not doctype:
+		return None
+
 	cache_key = f"lark_sync_mapping:{doctype}"
 	cached_mapping = frappe.cache().get_value(cache_key)
 	if cached_mapping is not None:
@@ -2167,6 +2170,9 @@ def handle_file_attach(doc, handler=None):
 	# 1. NEW: Check if the parent DocType is mapped to a Bitable.
 	# If yes, we trigger the Universal Sync instead of a standalone upload.
 	# This ensures Bitable tokens and Drive tokens are handled in a single transaction/job.
+	if not doc.attached_to_doctype:
+		return
+
 	mapping = _get_sync_mapping(doc.attached_to_doctype)
 	if mapping:
 		frappe.enqueue(
