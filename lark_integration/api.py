@@ -2535,6 +2535,11 @@ def _sync_todo_record_to_lark(doc_name):
 	if getattr(doc, "_sync_from_lark", False):
 		return
 
+	# Re-check GUID from DB to avoid duplicate creation if multiple jobs were queued
+	guid_in_db = frappe.db.get_value("ToDo", doc_name, "lark_task_guid")
+	if guid_in_db:
+		doc.lark_task_guid = guid_in_db
+
 	try:
 		settings = _get_settings_doc()
 		if not settings or not settings.todo_sync_enabled:
@@ -2682,12 +2687,17 @@ def _sync_todo_record_to_lark(doc_name):
 			if settings.todo_priority_mapping:
 				_sync_lark_task_priority(doc.lark_task_guid, doc.priority, token)
 
+			# FINAL COMMIT FOR UPDATE
+			frappe.db.commit()
+
 		else:
 			# CREATE
-			res = _lark_request("POST", url, token=token, json=payload, params={"user_id_type": "user_id"})
+			res = _lark_request("POST", url, token=token, json=payload, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
 			if res and res.get("data", {}).get("task", {}).get("guid"):
 				guid = res["data"]["task"]["guid"]
 				doc.db_set("lark_task_guid", guid, update_modified=False)
+				# CRITICAL: Commit immediately after creation to prevent race conditions during updates
+				frappe.db.commit()
 				
 				if doc.lark_task_list:
 					list_guid = frappe.db.get_value("Lark Task List", doc.lark_task_list, "lark_list_guid")
@@ -2838,6 +2848,11 @@ def pull_lark_tasks(publish_progress=False):
 
 		# Find/Create ToDo
 		todo_name = frappe.db.get_value("ToDo", {"lark_task_guid": guid}, "name")
+		
+		# Fallback: Check if we have a ToDo with same description but no GUID yet (race condition guard)
+		if not todo_name:
+			todo_name = frappe.db.get_value("ToDo", {"description": summary, "lark_task_guid": ("is", "not set")}, "name")
+
 		todo = None
 		if todo_name:
 			todo = frappe.get_doc("ToDo", todo_name)
@@ -2993,6 +3008,12 @@ def _sync_event_record_to_lark(doc_name):
 	if getattr(doc, "_sync_from_lark", False):
 		return
 
+	# Re-check ID from DB to avoid duplicate creation if multiple jobs were queued
+	event_data = frappe.db.get_value("Event", doc_name, ["lark_event_id", "lark_calendar_id"], as_dict=True)
+	if event_data and event_data.lark_event_id:
+		doc.lark_event_id = event_data.lark_event_id
+		doc.lark_calendar_id = event_data.lark_calendar_id
+
 	settings = frappe.get_single("Lark Integration Settings")
 	if not settings.calendar_sync_enabled:
 		return
@@ -3045,6 +3066,9 @@ def _sync_event_record_to_lark(doc_name):
 		# Update
 		update_url = f"{url}/{doc.lark_event_id}"
 		res = _lark_request("PATCH", update_url, token=token, json=payload, reference_doctype="Event", reference_name=doc.name)
+		
+		# FINAL COMMIT FOR UPDATE
+		frappe.db.commit()
 	else:
 		# Create
 		res = _lark_request("POST", url, token=token, json=payload, reference_doctype="Event", reference_name=doc.name)
@@ -3057,6 +3081,9 @@ def _sync_event_record_to_lark(doc_name):
 			vchat = res["data"]["event"].get("vchat", {})
 			if vchat.get("meeting_url"):
 				doc.db_set("lark_meeting_url", vchat["meeting_url"], update_modified=False)
+			
+			# FINAL COMMIT FOR CREATE
+			frappe.db.commit()
 
 	# Advanced Feature: Attendee Sync
 	if res and not res.get("error"):
