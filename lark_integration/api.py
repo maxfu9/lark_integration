@@ -1628,6 +1628,12 @@ def handle_file_delete(doc, method=None):
 	if not links:
 		return
 
+	# 1. NEW: Delete the tracking records SYNCHRONOUSLY.
+	# This unblocks the parent File deletion by removing the link constraint.
+	for link in links:
+		frappe.db.delete("Lark Drive File", {"name": link['name']})
+
+	# 2. Enqueue the LARK API deletion in the background.
 	frappe.enqueue(
 		"lark_integration.api._delete_lark_file_job",
 		links=links,
@@ -1646,16 +1652,12 @@ def _delete_lark_file_job(links, parent_doctype=None, parent_name=None):
 
 	for link in links:
 		try:
-			# 2. Delete from Lark Drive
+			# Delete from Lark Drive
 			# Endpoint: DELETE /drive/v1/files/:file_token?type=file
 			delete_url = f"{LARK_BASE_URL}/drive/v1/files/{link['lark_file_token']}"
 			_lark_request("DELETE", delete_url, token=token, params={"type": "file"}, reference_doctype=parent_doctype, reference_name=parent_name)
-			
-			# 3. Delete the tracking record itself
-			frappe.db.delete("Lark Drive File", {"name": link['name']})
-			frappe.db.commit()
 		except Exception:
-			frappe.log_error(title=f"Failed to delete Lark file {link.get('name')}", message=frappe.get_traceback())
+			frappe.log_error(title=f"Failed to delete file from Lark Drive: {link.get('lark_file_token')}", message=frappe.get_traceback())
 
 
 @frappe.whitelist()
