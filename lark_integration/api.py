@@ -3,6 +3,8 @@ import os
 import re
 import subprocess
 import time
+import hashlib
+import hmac
 from collections.abc import Iterable
 from datetime import datetime, time as dt_time, timedelta
 from urllib.parse import quote
@@ -11,6 +13,24 @@ import frappe
 import requests
 from frappe.utils import fmt_money, get_datetime
 from frappe.utils.pdf import get_pdf
+
+
+def _verify_lark_signature(key, body_bytes, signature, timestamp, nonce):
+	"""
+	Verifies the authenticity of a Lark webhook request using HMAC-SHA256.
+	Lark Signatures are computed as: HMAC-SHA256(key, timestamp + nonce + body)
+	"""
+	if not key or not signature:
+		return False
+		
+	# 1. Construct target string
+	target = f"{timestamp}{nonce}".encode("utf-8") + body_bytes
+	
+	# 2. Compute local signature
+	local_sig = hmac.new(key.encode("utf-8"), target, hashlib.sha256).hexdigest()
+	
+	# 3. Secure comparison
+	return hmac.compare_digest(local_sig, signature)
 
 LARK_BASE_URL = "https://open.larksuite.com/open-apis"
 TOKEN_CACHE_KEY = "lark_integration:tenant_access_token"
@@ -123,11 +143,12 @@ def _get_config():
 		if settings.replace_erpnext_files_after_upload is not None:
 			config["replace_erpnext_files_after_upload"] = bool(settings.replace_erpnext_files_after_upload)
 
-		# Global Notifications
 		config["enable_global_error_notifications"] = bool(settings.enable_global_error_notifications)
 		config["error_notification_chat_id"] = settings.error_notification_chat_id or ""
 		config["notify_on_sync_success"] = bool(settings.notify_on_sync_success)
 		config["notify_on_batch_success"] = bool(settings.notify_on_batch_success)
+		config["encrypt_key"] = settings.get_password("encrypt_key")
+		config["verification_token"] = settings.verification_token
 		
 		# Role-based chat registry
 		config["notification_recipients"] = [
@@ -137,6 +158,29 @@ def _get_config():
 
 	if config["request_timeout"] <= 0:
 		config["request_timeout"] = DEFAULT_REQUEST_TIMEOUT
+		
+	return config
+
+
+def _get_approval_mappings():
+	"""
+	Fetches all enabled Lark Approval Mappings.
+	Results are cached in Redis to avoid redundant database lookups during webhooks.
+	"""
+	cache_key = "lark_integration:approval_mappings"
+	mappings = frappe.cache().get_value(cache_key)
+	
+	if mappings is None:
+		if not _doctype_available("Lark Approval Mapping"):
+			return []
+			
+		mappings = frappe.get_all("Lark Approval Mapping", 
+			filters={"enabled": 1}, 
+			fields=["document_type", "approve_action", "reject_action", "signature_required"]
+		)
+		frappe.cache().set_value(cache_key, mappings, expires_in_sec=3600)
+		
+	return mappings
 
 	return config
 
@@ -145,12 +189,18 @@ def clear_lark_cache(doc=None, method=None):
 	"""Clears cached Lark mappings. Targeted if doc is provided, otherwise global."""
 	if doc and doc.doctype == "Lark Sync Document":
 		frappe.cache().delete_value(f"lark_sync_mapping:{doc.document_type}")
+	elif doc and doc.doctype == "Lark Approval Mapping":
+		frappe.cache().delete_value("lark_integration:approval_mappings")
+	elif doc and doc.doctype == "Lark Notification":
+		frappe.cache().delete_keys("lark_notification:*")
 	elif doc and doc.doctype == "Lark Integration Settings":
 		frappe.cache().delete_keys("lark_integration:*")
+		frappe.cache().delete_keys("lark_notification:*")
 	else:
 		# Global flush (fallback or explicit call)
 		frappe.cache().delete_keys("lark_sync_mapping:*")
 		frappe.cache().delete_keys("lark_integration:*")
+		frappe.cache().delete_keys("lark_notification:*")
 	
 	return True
 
@@ -3528,19 +3578,34 @@ def _sync_lark_task_priority(task_guid, priority_name, token):
 					_lark_request("PATCH", url, token=token, json=payload, params={"user_id_type": "user_id"})
 
 @frappe.whitelist(allow_guest=True)
-@frappe.whitelist(allow_guest=True)
 def handle_interactive_card():
 	"""
 	Whitelisted endpoint to handle callback from Lark Interactive Cards.
 	Processes button interactions (Workflow Actions, Method calls).
 	"""
-	data = frappe.request.get_json()
+	config = _get_config()
+	raw_body = frappe.request.get_data()
+	data = json.loads(raw_body) if raw_body else {}
+	
 	if not data:
 		return {"status": "error", "message": "No data"}
 	
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
 		return {"challenge": data.get("challenge")}
+		
+	# 2. Security: Verify Signature
+	signature = frappe.get_header("X-Lark-Signature")
+	timestamp = frappe.get_header("X-Lark-Request-Timestamp")
+	nonce = frappe.get_header("X-Lark-Request-Nonce")
+	
+	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], raw_body, signature, timestamp, nonce):
+		frappe.log_error("Lark Interactive Card Security Error", "Invalid signature received from Lark.")
+		return {"toast": {"type": "error", "content": "Security verification failed"}}
+	
+	# 3. Security: Verify Token
+	if config.get("verification_token") and data.get("token") != config["verification_token"]:
+		return {"toast": {"type": "error", "content": "Verification token mismatch"}}
 	
 	action_data = data.get("action", {})
 	value = action_data.get("value", {})
@@ -3559,11 +3624,11 @@ def handle_interactive_card():
 	try:
 		doc = frappe.get_doc(doc_doctype, doc_name)
 		
-		# 2. Process Action
+		# 4. Process Action
 		if action_type == "Workflow Action":
 			from frappe.model.workflow import apply_workflow
 			apply_workflow(doc, action_value)
-			message = f"Document updated to state: {doc.workflow_state}"
+			message = f"Document updated to state: **{doc.workflow_state}**"
 			
 		elif action_type == "Method":
 			# Call whitelisted method on doc
@@ -3573,14 +3638,16 @@ def handle_interactive_card():
 		else:
 			return {"toast": {"type": "error", "content": f"Unsupported action type: {action_type}"}}
 
-		# 3. Dynamic Card Update (Optional but polite)
-		# We can return a new card JSON here to update the original message
+		# 5. Dynamic Card Update (Optional but polite)
+		# We include a link back to the ERPNext document for convenience
+		doc_url = f"{frappe.utils.get_url()}/app/{doc_doctype.lower().replace(' ', '-')}/{doc_name}"
+		
 		return {
-			"toast": {"type": "info", "content": message},
+			"toast": {"type": "info", "content": "Action successfully processed"},
 			"header": {
 				"template": "green",
 				"title": {
-					"content": "Action Completed",
+					"content": "✅ Action Completed",
 					"tag": "plain_text"
 				}
 			},
@@ -3588,8 +3655,18 @@ def handle_interactive_card():
 				{
 					"tag": "div",
 					"text": {
-						"content": f"**Successfully processed:** {action_value}\n{message}",
+						"content": f"**Target:** [{doc_name}]({doc_url})\n**Action:** {action_value}\n**Result:** {message}",
 						"tag": "lark_md"
+					}
+				},
+				{
+					"tag": "hr"
+				},
+				{
+					"tag": "note",
+					"text": {
+						"content": f"Processed at: {frappe.utils.get_datetime_str(frappe.utils.now_datetime())}",
+						"tag": "plain_text"
 					}
 				}
 			]
@@ -3602,15 +3679,31 @@ def handle_interactive_card():
 
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""
-	data = frappe.request.get_json()
+	config = _get_config()
+	raw_body = frappe.request.get_data()
+	data = json.loads(raw_body) if raw_body else {}
+	
 	if not data:
 		return {"status": "error", "message": "No data"}
 	
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
 		return {"challenge": data.get("challenge")}
+		
+	# 2. Security: Verify Signature
+	signature = frappe.get_header("X-Lark-Signature")
+	timestamp = frappe.get_header("X-Lark-Request-Timestamp")
+	nonce = frappe.get_header("X-Lark-Request-Nonce")
 	
-	# 2. Dispatch all other events to background job for performance
+	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], raw_body, signature, timestamp, nonce):
+		frappe.log_error("Lark Webhook Security Error", "Invalid signature received from Lark.")
+		return {"status": "error", "message": "Security verification failed"}
+	
+	# 3. Security: Verify Token
+	if config.get("verification_token") and data.get("token") != config["verification_token"]:
+		return {"status": "error", "message": "Verification token mismatch"}
+	
+	# 4. Dispatch all other events to background job for performance
 	frappe.enqueue(
 		"lark_integration.api._handle_lark_webhook_event",
 		data=data,
@@ -3737,7 +3830,7 @@ def _handle_lark_webhook_event(data):
 		
 		if instance_code and status:
 			# Search dynamically for any document that has this instance code
-			mappings = frappe.get_all("Lark Approval Mapping", filters={"enabled": 1}, fields=["document_type", "approve_action", "reject_action"])
+			mappings = _get_approval_mappings()
 			for m in mappings:
 				dt = m.document_type
 				doc_name = frappe.db.get_value(dt, {"lark_approval_instance_id": instance_code}, "name")
@@ -3843,15 +3936,19 @@ def _download_lark_signed_pdf(doc, instance_code, token):
 		
 		if dl_res:
 			# Save as attachment in ERPNext
+			# Use timestamp to distinguish between multiple signing attempts or versions
+			timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+			file_name = f"Signed_{doc.name}_{timestamp}.pdf"
+			
 			from frappe.utils.file_manager import save_file
 			file_doc = save_file(
-				f"Signed_{doc.name}.pdf",
+				file_name,
 				dl_res.content,
 				doc.doctype,
 				doc.name,
 				is_private=1
 			)
-			doc.add_comment("Comment", f"✅ Signed document attached: [Signed_{doc.name}.pdf]({file_doc.file_url})")
+			doc.add_comment("Comment", f"✅ Signed document attached: [{file_name}]({file_doc.file_url})")
 
 	except Exception:
 		frappe.log_error(f"Lark Signed PDF Download Fail: {doc.doctype} {doc.name}", frappe.get_traceback())

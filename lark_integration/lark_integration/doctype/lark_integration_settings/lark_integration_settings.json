@@ -11,6 +11,8 @@
   "auth_instructions",
   "app_id",
   "app_secret",
+  "encrypt_key",
+  "verification_token",
   "column_break_auth",
   "last_auth_success",
   "section_break_runtime",
@@ -106,6 +108,18 @@
    "fieldtype": "Password",
    "label": "Lark App Secret",
    "description": "The Secret Key for your Lark App, used for secure authentication."
+  },
+  {
+   "fieldname": "encrypt_key",
+   "fieldtype": "Password",
+   "label": "Webhook Encryption Key",
+   "description": "Used to verify 'X-Lark-Signature' for webhooks. Found in Developer Console > Event Subscriptions."
+  },
+  {
+   "fieldname": "verification_token",
+   "fieldtype": "Data",
+   "label": "Verification Token",
+   "description": "Used to verify the legality of Lark event subscriptions. Found in Developer Console > Event Subscriptions."
   },
   {
    "fieldname": "column_break_auth",

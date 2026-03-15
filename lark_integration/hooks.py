@@ -44,6 +44,14 @@ doc_events = {
     "Lark Task List": {
         "on_update": "lark_integration.api.clear_lark_cache",
         "on_trash": "lark_integration.api.delete_lark_task_list"
+    },
+    "Lark Notification": {
+        "on_update": "lark_integration.api.clear_lark_cache",
+        "on_trash": "lark_integration.api.clear_lark_cache"
+    },
+    "Lark Approval Mapping": {
+        "on_update": "lark_integration.api.clear_lark_cache",
+        "on_trash": "lark_integration.api.clear_lark_cache"
     }
 }
 
