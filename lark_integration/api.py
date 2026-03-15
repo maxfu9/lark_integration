@@ -1199,7 +1199,7 @@ def upload_pdf_to_lark(doc, token, app_token):
 			"parent_type": "bitable_file",
 			"parent_node": app_token,
 			"size": len(pdf_content),
-			"media_type": "pdf"
+			"media_type": "file"
 		}
 		files = {"file": (f"{doc.name}.pdf", pdf_content, "application/pdf")}
 		payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=doc.doctype, reference_name=doc.name)
@@ -1319,13 +1319,12 @@ def upload_to_lark_drive(file_name: str, content: bytes, token: str, folder_toke
 	if not token or not folder_token or not content:
 		return None
 
-	upload_url = f"{LARK_BASE_URL}/drive/v1/medias/upload_all"
+	upload_url = f"{LARK_BASE_URL}/drive/v1/files/upload_all"
 	params = {
 		"file_name": file_name,
 		"parent_type": LARK_DRIVE_PARENT_TYPE,
 		"parent_node": folder_token,
 		"size": len(content),
-		"media_type": "file"
 	}
 	files = {"file": (file_name, content, "application/octet-stream")}
 	payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=reference_doctype, reference_name=reference_name)
