@@ -1,50 +1,51 @@
 {
-  "actions": [],
-  "allow_rename": 1,
-  "creation": "2026-03-14 11:15:00.000000",
-  "doctype": "DocType",
-  "engine": "InnoDB",
-  "field_order": [
-    "label",
-    "erpnext_field",
-    "lark_field_id"
-  ],
-  "fields": [
-    {
-      "fieldname": "label",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Label",
-      "reqd": 1
-    },
-    {
-      "fieldname": "erpnext_field",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "ERPNext Fieldname",
-      "reqd": 1,
-      "description": "The exact fieldname from the ERPNext DocType (e.g., grand_total, supplier)."
-    },
-    {
-      "fieldname": "lark_field_id",
-      "fieldtype": "Data",
-      "in_list_view": 1,
-      "label": "Lark Field ID",
-      "reqd": 1,
-      "description": "The ID of the field in your Lark Approval Form."
-    }
-  ],
-  "index_web_pages_for_search": 1,
-  "istable": 1,
-  "links": [],
-  "modified": "2026-03-14 11:15:00.000000",
-  "modified_by": "Administrator",
-  "module": "Lark Integration",
-  "name": "Lark Approval Field",
-  "owner": "Administrator",
-  "permissions": [],
-  "sort_field": "modified",
-  "sort_order": "DESC",
-  "states": [],
-  "track_changes": 1
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-14 11:15:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "label",
+  "erpnext_field",
+  "lark_field_id"
+ ],
+ "fields": [
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Lark Field Label",
+   "reqd": 1,
+   "description": "The display name of the field in Lark (e.g. 'Supplier')."
+  },
+  {
+   "fieldname": "erpnext_field",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "ERPNext Field Name",
+   "reqd": 1,
+   "description": "The exact fieldname from ERPNext (e.g. 'supplier', 'total')."
+  },
+  {
+   "fieldname": "lark_field_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Lark Field ID",
+   "reqd": 1,
+   "description": "The internal ID from Lark's form definition."
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-15 07:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Lark Integration",
+ "name": "Lark Approval Field",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
 }

@@ -16,33 +16,37 @@
    "fieldname": "child_table_field",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Child Table Field",
+   "label": "ERPNext Child Table",
    "options": "",
-   "reqd": 1
+   "reqd": 1,
+   "description": "Select the child table field from the parent DocType (e.g. 'items')."
   },
   {
    "fieldname": "child_table_doctype",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Child Table DocType",
-   "read_only": 1
+   "label": "Child DocType",
+   "read_only": 1,
+   "description": "The DocType of the child table (auto-detected)."
   },
   {
    "fieldname": "items_table_id",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Items Table ID"
+   "label": "Target Bitable Table ID",
+   "description": "The ID of the Bitable table where these items will be synced.",
+   "reqd": 1
   },
   {
    "fieldname": "description",
    "fieldtype": "Small Text",
-   "label": "Description"
+   "label": "Notes"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-12 00:00:00.000000",
+ "modified": "2026-03-15 07:50:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Sync Child Table",

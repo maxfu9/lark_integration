@@ -5,21 +5,30 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "role"
+  "erpnext_role",
+  "lark_chat_id"
  ],
  "fields": [
   {
-   "fieldname": "role",
+   "fieldname": "erpnext_role",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Role",
+   "label": "ERPNext Role",
    "options": "Role",
+   "reqd": 1
+  },
+  {
+   "fieldname": "lark_chat_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Lark Chat ID",
+   "description": "The Lark Chat ID or Open ID to receive notifications for this role.",
    "reqd": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
- "modified": "2026-03-15 00:05:00.000000",
+ "modified": "2026-03-15 07:25:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Notification Recipient",

@@ -19,57 +19,62 @@
   {
    "fieldname": "reference_doctype",
    "fieldtype": "Link",
-   "label": "Reference DocType",
+   "label": "Document Type",
    "options": "DocType",
-   "reqd": 1
+   "reqd": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "reference_name",
-   "fieldtype": "Data",
-   "label": "Reference Name",
-   "reqd": 1
+   "fieldtype": "Dynamic Link",
+   "label": "Document Name",
+   "options": "reference_doctype",
+   "reqd": 1,
+   "in_list_view": 1
   },
   {
    "fieldname": "table_id",
    "fieldtype": "Data",
-   "label": "Table ID",
+   "label": "Bitable Table ID",
    "reqd": 1
   },
   {
    "fieldname": "app_token",
    "fieldtype": "Data",
-   "label": "App Token",
+   "label": "Bitable App Token",
    "reqd": 1
   },
   {
    "fieldname": "fields",
    "fieldtype": "Code",
-   "label": "Fields JSON",
+   "label": "Sync Payload",
    "options": "JSON"
   },
   {
    "default": "Pending",
    "fieldname": "status",
    "fieldtype": "Select",
-   "label": "Status",
-   "options": "Pending\nSynced\nFailed"
+   "label": "Sync Status",
+   "options": "Pending\nSynced\nFailed",
+   "in_list_view": 1
   },
   {
    "fieldname": "error_message",
    "fieldtype": "Small Text",
-   "label": "Error Message"
+   "label": "Last Error"
   },
   {
    "default": "0",
    "fieldname": "retry_count",
    "fieldtype": "Int",
-   "label": "Retry Count"
+   "label": "Retry Attempts",
+   "in_list_view": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 0,
  "links": [],
- "modified": "2026-03-14 14:15:00.000000",
+ "modified": "2026-03-15 07:15:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Sync Queue",

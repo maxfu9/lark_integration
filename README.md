@@ -109,9 +109,18 @@ You can now connect **any** ERPNext Workflow to a Lark Approval form without fur
     - **Workflow State**: Specify the name of the state that triggers the sync (e.g., `Pending Approval`).
     - **Approval Code**: Paste your unique code from the Lark Approval Definition.
 3.  **Field Mappings**: In the child table, map ERPNext fieldnames to Lark Form IDs.
-    - *Example*: `grand_total` → `total_amount_id`.
 4.  **Automatic ID Tracking**: Ensure your target DocType has a field called `lark_approval_instance_id`. 
-    - *Note: This will be automatically added for standard DocTypes or can be added as a Custom Field.*
+5.  **Interactive Cards**: Enable **Is Interactive** in notifications to add buttons.
+    -   *Action Type*: `Workflow Action` (e.g., `Approve`) or `Method`.
+    -   *Setup*: In Lark App, set **Message Card Request URL** to: `https://[your-site-url]/api/method/lark_integration.api.handle_interactive_card`.
+
+6.  **Webhook Security (Highly Recommended)**:
+    -   Go to **Lark Integration Settings** and find the **Authentication** section.
+    -   Copy the **Verification Token** and **Encryption Key** from your Lark App (Developer Console > Event Subscriptions).
+    -   The integration will automatically verify all incoming messages using HMAC-SHA256 if the **Encryption Key** is configured.
+6.  **E-Signature Integration**: Enable **Signature Required** in `Lark Approval Mapping`.
+    -   When triggered, ERPNext pushes the PDF for signing.
+    -   The integration automatically downloads the signed PDF back to ERPNext upon completion.
 
 ---
 

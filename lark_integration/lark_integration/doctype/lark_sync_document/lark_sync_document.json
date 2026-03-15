@@ -25,8 +25,6 @@
   "child_tables",
   "cb_child_mapping",
   "active_child_table_field",
-  "child_table_field",
-  "child_table_doctype",
   "child_field_mappings",
   "sb_summary",
   "enable_item_summary",
@@ -43,15 +41,15 @@
    "fieldname": "enabled",
    "fieldtype": "Check",
    "in_list_view": 1,
-   "label": "Active",
-   "description": "Enable sync for this specific document type."
+   "label": "Enable Sync",
+   "description": "Master toggle for this DocType sync."
   },
   {
    "fieldname": "document_type",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "ERPNext DocType",
-   "description": "The document type in ERPNext you want to synchronize.",
+   "description": "Select the ERPNext DocType to synchronize with Lark.",
    "options": "DocType",
    "reqd": 1,
    "unique": 1,
@@ -61,28 +59,29 @@
    "fieldname": "key_field",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Lark Key Field (Unique ID)",
-   "description": "The field in Lark that stores the ERPNext Document Name for matching.",
+   "label": "Lark Unique ID Field",
+   "description": "The Bitable field name that stores the ERPNext 'ID' (e.g., 'ID' or 'Doc Name').",
    "reqd": 1
   },
   {
    "fieldname": "sb_bitable",
    "fieldtype": "Section Break",
-   "label": "Bitable Details"
+   "label": "Bitable Configuration"
   },
   {
    "fieldname": "app_token",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Bitable App Token",
-   "description": "The unique identifier for your Bitable application."
+   "description": "The 'app_token' from the Bitable's URL.",
+   "reqd": 1
   },
   {
    "fieldname": "main_table_id",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Main Table ID",
-   "description": "The ID of the primary table in Lark Bitable for this document.",
+   "description": "The ID of the primary table for this DocType.",
    "reqd": 1
   },
   {
@@ -92,20 +91,20 @@
   {
    "fieldname": "items_table_id",
    "fieldtype": "Data",
-   "label": "Items Table ID (Legacy)",
-   "description": "Used only if not using the universal child table mapping below."
+   "label": "Legacy Items Table ID",
+   "description": "Only used for hardcoded fallback. Use Child Table Mapping for new setups."
   },
   {
    "fieldname": "sb_pdf",
    "fieldtype": "Section Break",
-   "label": "PDF Synchronization"
+   "label": "PDF & Attachment Sync"
   },
   {
    "default": "1",
    "fieldname": "sync_attachments",
    "fieldtype": "Check",
-   "label": "Sync Document PDF",
-   "description": "Generate and upload a PDF of the ERPNext record to Lark."
+   "label": "Generate & Sync PDF",
+   "description": "Automatically upload a PDF version of the document."
   },
   {
    "fieldname": "cb_pdf",
@@ -115,37 +114,37 @@
    "default": "Both",
    "fieldname": "attachment_sync_mode",
    "fieldtype": "Select",
-   "label": "Upload Destination",
+   "label": "Sync Destination",
    "options": "Both\nBase Only\nDrive Only\nNone",
-   "description": "Choose whether to store PDF in Bitable, Lark Drive, or both."
+   "description": "Where should the generated PDF and attachments be stored?"
   },
   {
    "fieldname": "sb_description",
    "fieldtype": "Section Break",
-   "label": "Notes"
+   "label": "Internal Tracking"
   },
   {
    "fieldname": "description",
    "fieldtype": "Small Text",
-   "label": "Description"
+   "label": "Notes/Description"
   },
   {
    "fieldname": "sb_child",
    "fieldtype": "Section Break",
-   "label": "Child Table Mapping",
+   "label": "Multi-Table Sync (Advanced)",
    "depends_on": "eval:doc.sync_child_table"
   },
   {
    "default": "0",
    "fieldname": "sync_child_table",
    "fieldtype": "Check",
-   "label": "Enable Multi-Table Sync",
-   "description": "Synchronize multiple child tables (like Items, Taxes) to separate Lark tables."
+   "label": "Enable Child Table Sync",
+   "description": "Enable if you want to sync child tables like Items or Taxes to separate Bitable tables."
   },
   {
    "fieldname": "child_tables",
    "fieldtype": "Table",
-   "label": "Child Tables",
+   "label": "Target Child Tables",
    "depends_on": "eval:doc.sync_child_table",
    "options": "Lark Sync Child Table"
   },
@@ -156,26 +155,10 @@
   {
    "fieldname": "active_child_table_field",
    "fieldtype": "Select",
-   "label": "Active Child Table (for Mapping Selection)",
+   "label": "Filter Field Mapping By",
    "depends_on": "eval:doc.sync_child_table",
-   "options": ""
-  },
-  {
-   "fieldname": "child_table_field",
-   "fieldtype": "Select",
-   "hidden": 1,
-   "label": "Child Table Field",
-   "depends_on": "eval:doc.sync_child_table",
-   "options": ""
-  },
-  {
-   "fieldname": "child_table_doctype",
-   "fieldtype": "Select",
-   "label": "Child Table DocType",
-   "read_only": 1,
-   "hidden": 1,
-   "depends_on": "eval:doc.sync_child_table",
-   "options": ""
+   "options": "",
+   "description": "Use this to filter the huge mapping table below."
   },
   {
    "fieldname": "child_field_mappings",
@@ -187,20 +170,20 @@
   {
    "fieldname": "sb_summary",
    "fieldtype": "Section Break",
-   "label": "Formatted Item Summary"
+   "label": "Item Summary (Optional)"
   },
   {
    "default": "0",
    "fieldname": "enable_item_summary",
    "fieldtype": "Check",
-   "label": "Generate Item Summary",
-   "description": "Create a formatted text block of all items to display in the main Lark table."
+   "label": "Generate Text Summary",
+   "description": "Creates a formatted text block (e.g. for a single Bitable field) showing multiple items."
   },
   {
    "fieldname": "summary_child_table",
    "fieldtype": "Select",
-   "label": "Child Table to Summarize",
-   "depends_on": "enable_item_summary"
+   "label": "Source Child Table",
+   "depends_on": "eval:doc.enable_item_summary"
   },
   {
    "fieldname": "cb_summary",
@@ -209,32 +192,33 @@
   {
    "fieldname": "summary_row_template",
    "fieldtype": "Small Text",
-   "label": "Row Format Template",
-   "description": "Use {fieldname} syntax. Examples: \n- {item_name} ({qty} x {rate} = {amount})",
-   "depends_on": "enable_item_summary"
+   "label": "Row Template",
+   "description": "Example: {item_name} x {qty}",
+   "depends_on": "eval:doc.enable_item_summary"
   },
   {
    "default": "Item Details",
    "fieldname": "summary_lark_field",
    "fieldtype": "Data",
-   "label": "Target Lark Field",
-   "depends_on": "enable_item_summary"
+   "label": "Target Bitable Field",
+   "depends_on": "eval:doc.enable_item_summary"
   },
   {
    "fieldname": "sb_mappings",
    "fieldtype": "Section Break",
-   "label": "Field Mapping"
+   "label": "Main Field Mapping"
   },
   {
    "fieldname": "field_mappings",
    "fieldtype": "Table",
-   "label": "Lark Field Mapping",
-   "options": "Lark Sync Field"
+   "label": "Field Mappings",
+   "options": "Lark Sync Field",
+   "description": "Map ERPNext fields (including paths like 'customer.email') to Bitable fields."
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-15 00:00:00.000000",
+ "modified": "2026-03-15 07:00:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Sync Document",

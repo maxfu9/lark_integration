@@ -78,48 +78,48 @@
   {
    "fieldname": "tab_integration",
    "fieldtype": "Tab Break",
-   "label": "Integration"
+   "label": "General Settings"
   },
   {
    "default": "1",
    "fieldname": "enabled",
    "fieldtype": "Check",
-   "label": "Enable Integration",
-   "description": "Master toggle to enable or disable all Lark integration features."
+   "label": "Enable Lark Integration",
+   "description": "Global switch to enable/disable all background syncs and notifications."
   },
   {
    "fieldname": "section_break_auth",
    "fieldtype": "Section Break",
-   "label": "Authentication"
+   "label": "Lark App Credentials"
   },
   {
    "fieldname": "auth_instructions",
    "fieldtype": "HTML",
-   "label": "Setup Instructions"
+   "label": "Setup Guide"
   },
   {
    "fieldname": "app_id",
    "fieldtype": "Data",
-   "label": "Lark App ID",
-   "description": "The Unique ID of your Lark App from the Lark Developer Console."
+   "label": "App ID",
+   "description": "Found in Lark Developer Console > App Details."
   },
   {
    "fieldname": "app_secret",
    "fieldtype": "Password",
-   "label": "Lark App Secret",
-   "description": "The Secret Key for your Lark App, used for secure authentication."
+   "label": "App Secret",
+   "description": "Found in Lark Developer Console > App Details."
   },
   {
    "fieldname": "encrypt_key",
    "fieldtype": "Password",
    "label": "Webhook Encryption Key",
-   "description": "Used to verify 'X-Lark-Signature' for webhooks. Found in Developer Console > Event Subscriptions."
+   "description": "Used to verify requests from Lark. Found in Event Subscriptions."
   },
   {
    "fieldname": "verification_token",
    "fieldtype": "Data",
    "label": "Verification Token",
-   "description": "Used to verify the legality of Lark event subscriptions. Found in Developer Console > Event Subscriptions."
+   "description": "Found in Lark Developer Console > Event Subscriptions."
   },
   {
    "fieldname": "column_break_auth",
@@ -134,13 +134,12 @@
   {
    "fieldname": "section_break_runtime",
    "fieldtype": "Section Break",
-   "label": "Runtime"
+   "label": "Performance & Logging"
   },
   {
    "fieldname": "mapping_note",
    "fieldtype": "HTML",
-   "label": "Sync Mapping",
-   "options": "<div style='padding: 10px; background-color: var(--bg-light-gray); border-radius: 4px; border-left: 4px solid var(--blue-500);'>Configure table IDs and sync scope in <a href='/app/lark-sync-document' style='font-weight: bold; text-decoration: underline;'>Lark Sync Document</a>.</div>"
+   "options": "<div style='padding: 10px; background-color: var(--bg-light-gray); border-radius: 4px; border-left: 4px solid var(--blue-500);'>Go to <a href='/app/lark-sync-document' style='font-weight: bold; text-decoration: underline;'>Lark Sync Document</a> to map specific DocTypes to Bitable.</div>"
   },
   {
    "fieldname": "section_break_runtime_fields",
@@ -150,85 +149,83 @@
    "fieldname": "column_break_runtime",
    "fieldtype": "Column Break"
   },
-   {
-    "default": "1",
-    "fieldname": "store_lark_record_id",
-    "fieldtype": "Check",
-    "label": "Store Lark Record ID",
-    "description": "Store the Lark Record ID in ERPNext to avoid redundant search calls during updates. Recommended for performance."
-   },
-   {
-    "default": "0",
-    "fieldname": "enable_batching",
-    "fieldtype": "Check",
-    "label": "Enable Batch Synchronization",
-    "description": "Group multiple updates into a single API call to Lark. Best for high-volume transactions."
-   },
-   {
-    "default": "50",
-    "depends_on": "eval:doc.enable_batching",
-    "fieldname": "batch_size",
-    "fieldtype": "Int",
-    "label": "Batch Size",
-    "description": "Number of records to sync per batch call (max 500)."
-   },
+  {
+   "default": "1",
+   "fieldname": "store_lark_record_id",
+   "fieldtype": "Check",
+   "label": "Persistent Record Linking",
+   "description": "Store Lark IDs in ERPNext to speed up updates (skips search API calls)."
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_batching",
+   "fieldtype": "Check",
+   "label": "Use Batch Processing",
+   "description": "Updates records in groups (default 50) to optimize API quota."
+  },
+  {
+   "default": "50",
+   "depends_on": "eval:doc.enable_batching",
+   "fieldname": "batch_size",
+   "fieldtype": "Int",
+   "label": "Batch Size",
+   "description": "Max 500."
+  },
   {
    "default": "0",
    "fieldname": "enable_api_logging",
    "fieldtype": "Check",
-   "label": "Enable API Logging",
-   "description": "Records all Lark API requests and responses in 'Lark API Log' for debugging and audit purposes."
+   "label": "Audit API Traffic",
+   "description": "Log all Lark communication for troubleshooting."
   },
   {
    "default": "20",
    "fieldname": "request_timeout",
    "fieldtype": "Int",
-   "label": "Request Timeout (Seconds)",
-   "description": "Maximum seconds to wait for a response from Lark before timing out. Default is 20 seconds."
+   "label": "API Timeout (Seconds)"
   },
   {
    "fieldname": "tab_lark_drive",
    "fieldtype": "Tab Break",
-   "label": "Lark Drive"
+   "label": "Drive Integrations"
   },
   {
    "default": "0",
    "fieldname": "drive_upload_enabled",
    "fieldtype": "Check",
-   "label": "Enable Drive Uploads",
-   "description": "Automatically upload ERPNext document attachments to your Lark Drive."
+   "label": "Auto-Upload Attachments",
+   "description": "Push all ERPNext document attachments to Lark Drive."
   },
   {
    "fieldname": "drive_folder_token",
    "fieldtype": "Data",
-   "label": "Target Folder Token",
-   "description": "The token of the Lark Drive folder where attachments will be stored."
+   "label": "Drive Folder Token",
+   "description": "The 'folder_token' from the Lark Drive URL."
   },
   {
    "default": "1",
    "fieldname": "replace_erpnext_files_after_upload",
    "fieldtype": "Check",
-   "label": "Delete Local Files After Upload",
-   "description": "Save ERPNext server space by deleting local file content once successfully uploaded to Lark."
+   "label": "Storage Optimization",
+   "description": "Delete local file content after successful Lark upload."
   },
   {
    "fieldname": "tab_backup",
    "fieldtype": "Tab Break",
-   "label": "Backup"
+   "label": "Offsite Backups"
   },
   {
    "default": "0",
    "fieldname": "backup_enabled",
    "fieldtype": "Check",
-   "label": "Enable Automated Backup",
-   "description": "Periodically upload ERPNext database content and personal files to Lark."
+   "label": "Enable Lark Backup",
+   "description": "Schedule database and file backups to Lark Drive."
   },
   {
    "default": "Daily",
    "fieldname": "backup_frequency",
    "fieldtype": "Select",
-   "label": "Schedule Type",
-   "description": "Choose between Hourly, Daily, or Weekly execution.",
+   "label": "Frequency",
    "options": "Hourly\nDaily\nWeekly"
   },
   {
@@ -236,46 +233,44 @@
    "depends_on": "eval:doc.backup_frequency == 'Hourly'",
    "fieldname": "backup_interval_hours",
    "fieldtype": "Int",
-   "label": "Backup Interval (Hours)"
+   "label": "Interval (Hours)"
   },
   {
    "depends_on": "eval:['Daily', 'Weekly'].includes(doc.backup_frequency)",
    "fieldname": "backup_time",
    "fieldtype": "Time",
-   "label": "Backup Time (Daily/Weekly)"
+   "label": "Run Time"
   },
   {
    "default": "Sunday",
    "depends_on": "eval:doc.backup_frequency == 'Weekly'",
    "fieldname": "backup_weekday",
    "fieldtype": "Select",
-   "label": "Backup Weekday (Weekly)",
+   "label": "Run Day",
    "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday"
   },
   {
    "fieldname": "backup_site",
    "fieldtype": "Data",
-   "label": "Target Site",
-   "description": "Leave blank to backup the current site. Use this for multi-tenant setups."
+   "label": "Target Site Name"
   },
   {
    "default": "0",
    "fieldname": "backup_files",
    "fieldtype": "Check",
-   "label": "Include Site Files",
-   "description": "If enabled, also backups your public and private file attachments."
+   "label": "Include Attachments"
   },
   {
    "default": "5",
    "fieldname": "backup_limit",
    "fieldtype": "Int",
-   "label": "Retention Limit (Number of Backups)"
+   "label": "Retention Count",
+   "description": "Keep only the 'X' last backups in Lark."
   },
   {
    "fieldname": "backup_lark_folder",
    "fieldtype": "Data",
-   "label": "Lark Backup Folder Token",
-   "description": "The token of the folder where backup archives will be uploaded."
+   "label": "Backup Folder Token"
   },
   {
    "fieldname": "column_break_backup",
@@ -285,69 +280,65 @@
    "default": "0",
    "fieldname": "send_email_on_success",
    "fieldtype": "Check",
-   "label": "Send Email for Successful Backup"
+   "label": "Email on Success"
   },
   {
    "default": "1",
    "fieldname": "notify_on_backup_failure",
    "fieldtype": "Check",
-   "label": "Notify On Backup Failure"
+   "label": "Email on Failure"
   },
   {
    "fieldname": "backup_notification_emails",
    "fieldtype": "Small Text",
-   "label": "Send Notifications To (comma separated)"
+   "label": "Recipients"
   },
   {
    "fieldname": "last_backup_on",
    "fieldtype": "Datetime",
-   "label": "Last Backup On",
+   "label": "Last Executed",
    "read_only": 1
   },
   {
    "fieldname": "last_backup_status",
    "fieldtype": "Data",
-   "label": "Last Backup Status",
+   "label": "Last Status",
    "read_only": 1
   },
   {
    "fieldname": "last_backup_error",
    "fieldtype": "Small Text",
-   "label": "Last Backup Error",
+   "label": "Last Error Log",
    "read_only": 1
   },
   {
    "fieldname": "last_backup_size",
    "fieldtype": "Data",
-   "label": "Total Backup Size",
-   "description": "Total size of the last uploaded backup run.",
+   "label": "Total Upload Size",
    "read_only": 1
   },
   {
    "fieldname": "last_backup_duration",
    "fieldtype": "Data",
-   "label": "Backup Duration",
-   "description": "Time taken for the last complete backup and upload process.",
+   "label": "Duration",
    "read_only": 1
   },
   {
    "fieldname": "tab_todo_sync",
    "fieldtype": "Tab Break",
-   "label": "ToDo Sync"
+   "label": "Task Sync"
   },
   {
    "default": "1",
    "fieldname": "todo_sync_enabled",
    "fieldtype": "Check",
-   "label": "Enable ToDo Sync",
-   "description": "Synchronize ERPNext ToDos with Lark Tasks."
+   "label": "Enable ToDo / Lark Task Sync"
   },
   {
    "default": "Periodic",
    "fieldname": "todo_sync_method",
    "fieldtype": "Select",
-   "label": "ToDo Sync Method",
-   "description": "Choose between real-time Webhooks or Periodic background polling.",
+   "label": "Sync Method",
    "options": "Periodic\nWebhook"
   },
   {
@@ -355,8 +346,7 @@
    "depends_on": "eval:doc.todo_sync_method == 'Periodic'",
    "fieldname": "todo_sync_interval",
    "fieldtype": "Select",
-   "label": "Polling Frequency",
-   "description": "How often the background sync should run for ToDos.",
+   "label": "Refresh Rate",
    "options": "5 Minutes\n15 Minutes\n30 Minutes\nHourly"
   },
   {
@@ -367,38 +357,38 @@
    "default": "1",
    "fieldname": "sync_todo_references",
    "fieldtype": "Check",
-   "label": "Include Links to ERPNext Documents in Lark"
+   "label": "Show ERPNext Links in Lark"
   },
   {
    "default": "0",
    "fieldname": "todo_priority_mapping",
    "fieldtype": "Check",
-   "label": "Sync Priority"
+   "label": "Sync Priority Levels"
   },
   {
    "default": "At due time",
    "fieldname": "default_reminder_offset",
    "fieldtype": "Select",
-   "label": "Default Reminder Offset",
+   "label": "Default Alarm",
    "options": "At due time\n5 minutes before\n15 minutes before\n30 minutes before\n1 hour before\n2 hours before\n1 day before\n2 days before\n1 week before"
   },
   {
    "fieldname": "last_todo_sync_on",
    "fieldtype": "Datetime",
-   "label": "Last Task Sync On",
+   "label": "Last Successful Sync",
    "read_only": 1
   },
   {
    "depends_on": "eval:doc.todo_sync_method == 'Webhook'",
    "fieldname": "section_break_todo_webhook",
    "fieldtype": "Section Break",
-   "label": "Lark ToDo Webhook Setup"
+   "label": "Webhook Configuration"
   },
   {
    "depends_on": "eval:doc.todo_sync_method == 'Webhook'",
    "fieldname": "webhook_instruction",
    "fieldtype": "HTML",
-   "label": "Webhook Instructions"
+   "label": "Setup Guide"
   },
   {
    "fieldname": "tab_calendar_sync",
@@ -409,15 +399,13 @@
    "default": "0",
    "fieldname": "calendar_sync_enabled",
    "fieldtype": "Check",
-   "label": "Enable Calendar Sync",
-   "description": "Synchronize ERPNext Events with Lark Calendar."
+   "label": "Enable Event / Lark Calendar Sync"
   },
   {
    "default": "Periodic",
    "fieldname": "calendar_sync_method",
    "fieldtype": "Select",
-   "label": "Calendar Sync Method",
-   "description": "Choose between real-time Webhooks or Periodic background polling.",
+   "label": "Sync Method",
    "options": "Periodic\nWebhook"
   },
   {
@@ -425,8 +413,7 @@
    "depends_on": "eval:doc.calendar_sync_method == 'Periodic'",
    "fieldname": "calendar_sync_interval",
    "fieldtype": "Select",
-   "label": "Polling Frequency",
-   "description": "How often the background sync should run for Calendar events.",
+   "label": "Refresh Rate",
    "options": "5 Minutes\n15 Minutes\n30 Minutes\nHourly"
   },
   {
@@ -436,20 +423,20 @@
   {
    "fieldname": "last_calendar_sync_on",
    "fieldtype": "Datetime",
-   "label": "Last Calendar Sync On",
+   "label": "Last Successful Sync",
    "read_only": 1
   },
   {
    "depends_on": "eval:doc.calendar_sync_method == 'Webhook'",
    "fieldname": "section_break_calendar_webhook",
    "fieldtype": "Section Break",
-   "label": "Lark Calendar Webhook Setup"
+   "label": "Webhook Configuration"
   },
   {
    "depends_on": "eval:doc.calendar_sync_method == 'Webhook'",
    "fieldname": "calendar_webhook_instruction",
    "fieldtype": "HTML",
-   "label": "Webhook Instructions"
+   "label": "Setup Guide"
   },
   {
    "fieldname": "tab_notifications",
@@ -460,47 +447,44 @@
    "default": "0",
    "fieldname": "enable_global_error_notifications",
    "fieldtype": "Check",
-   "label": "Enable Global Error Notifications",
-   "description": "Send a Lark Messenger alert for any critical errors in background jobs (Syncs, Backups, etc.)."
+   "label": "Admin Alerts (Critical Errors)",
+   "description": "Ping Lark Messenger immediately when a background sync job crashes."
   },
-   {
-    "depends_on": "eval:doc.enable_global_error_notifications",
-    "fieldname": "error_notification_chat_id",
-    "fieldtype": "Data",
-    "label": "Notification Chat ID",
-    "description": "The Lark Chat ID (or Open ID) where alerts will be sent."
-   },
-   {
-    "default": "0",
-    "fieldname": "notify_on_sync_success",
-    "fieldtype": "Check",
-    "label": "Notify on Individual Sync Success",
-    "description": "Send a notification every time a single document is successfully synced."
-   },
-   {
-    "default": "0",
-    "fieldname": "notify_on_batch_success",
-    "fieldtype": "Check",
-    "label": "Notify on Batch Sync Success",
-    "description": "Send a summary notification after a batch of records is successfully processed."
-   },
-   {
-    "fieldname": "notification_recipients",
-    "fieldtype": "Table",
-    "label": "Lark Chat Channels",
-    "description": "Map ERPNext Roles to specific Lark Chat IDs. These channels are used as targets for the triggers below.",
-    "options": "Lark Notification Recipient"
-   },
-   {
-    "fieldname": "backup_progress",
+  {
+   "depends_on": "eval:doc.enable_global_error_notifications",
+   "fieldname": "error_notification_chat_id",
+   "fieldtype": "Data",
+   "label": "Admin Chat ID"
+  },
+  {
+   "default": "0",
+   "fieldname": "notify_on_sync_success",
+   "fieldtype": "Check",
+   "label": "Ping on Success (Individual Docs)"
+  },
+  {
+   "default": "0",
+   "fieldname": "notify_on_batch_success",
+   "fieldtype": "Check",
+   "label": "Ping on Success (Batches)"
+  },
+  {
+   "fieldname": "notification_recipients",
+   "fieldtype": "Table",
+   "label": "Role-to-Chat Mapping",
+   "options": "Lark Notification Recipient",
+   "description": "Map ERPNext Roles to specific Lark Chat Channels."
+  },
+  {
+   "fieldname": "backup_progress",
    "fieldtype": "HTML",
-   "label": "Backup Progress"
+   "label": "Live Monitoring"
   }
  ],
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-03-13 20:45:00.000000",
+ "modified": "2026-03-15 07:05:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Integration Settings",

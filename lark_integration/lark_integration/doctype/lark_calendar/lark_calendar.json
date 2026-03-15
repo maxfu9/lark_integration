@@ -18,7 +18,8 @@
    "in_list_view": 1,
    "label": "Calendar Name",
    "reqd": 1,
-   "unique": 1
+   "unique": 1,
+   "description": "The name of the calendar in Lark."
   },
   {
    "fieldname": "lark_calendar_id",
@@ -26,26 +27,30 @@
    "in_list_view": 1,
    "label": "Lark Calendar ID",
    "no_copy": 1,
-   "read_only": 1
+   "read_only": 1,
+   "description": "Internal ID from Lark API."
   },
   {
    "fieldname": "owner",
    "fieldtype": "Link",
+   "get_query": "function() { return { filters: { 'enabled': 1 } }; }",
    "in_list_view": 1,
-   "label": "Owner",
+   "label": "Associated ERPNext User",
    "options": "User",
-   "reqd": 1
+   "reqd": 1,
+   "description": "The user whose calendar events will be synced."
   },
   {
    "default": "0",
    "fieldname": "is_primary",
    "fieldtype": "Check",
-   "label": "Is Primary"
+   "label": "Primary Calendar",
+   "description": "Enable if this is the user's main Lark calendar."
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-13 00:00:00.000000",
+ "modified": "2026-03-15 07:35:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark Calendar",

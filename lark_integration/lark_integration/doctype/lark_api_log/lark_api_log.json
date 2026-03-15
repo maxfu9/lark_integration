@@ -28,7 +28,7 @@
   {
    "fieldname": "method",
    "fieldtype": "Data",
-   "label": "Method",
+   "label": "HTTP Method",
    "in_list_view": 1
   },
   {
@@ -40,18 +40,18 @@
   {
    "fieldname": "url",
    "fieldtype": "Small Text",
-   "label": "URL",
+   "label": "Request URL",
    "in_list_view": 1
   },
   {
    "fieldname": "section_break_payloads",
    "fieldtype": "Section Break",
-   "label": "Payloads"
+   "label": "Payload Details"
   },
   {
    "fieldname": "request_payload",
    "fieldtype": "Code",
-   "label": "Request Payload",
+   "label": "Request Body",
    "options": "JSON"
   },
   {
@@ -61,30 +61,32 @@
   {
    "fieldname": "response_payload",
    "fieldtype": "Code",
-   "label": "Response Payload",
+   "label": "Response Body",
    "options": "JSON"
   },
   {
    "fieldname": "section_break_ref",
    "fieldtype": "Section Break",
-   "label": "Reference"
+   "label": "Audit Trace"
   },
   {
    "fieldname": "reference_doctype",
-   "fieldtype": "Data",
-   "label": "Reference DocType",
+   "fieldtype": "Link",
+   "label": "Trigerring DocType",
+   "options": "DocType",
    "in_list_view": 1
   },
   {
    "fieldname": "reference_name",
-   "fieldtype": "Data",
-   "label": "Reference Name",
+   "fieldtype": "Dynamic Link",
+   "label": "Triggering Record",
+   "options": "reference_doctype",
    "in_list_view": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-03-14 01:53:00.000000",
+ "modified": "2026-03-15 07:10:00.000000",
  "modified_by": "Administrator",
  "module": "Lark Integration",
  "name": "Lark API Log",

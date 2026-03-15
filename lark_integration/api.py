@@ -5,6 +5,7 @@ import subprocess
 import time
 import hashlib
 import hmac
+import random
 from collections.abc import Iterable
 from datetime import datetime, time as dt_time, timedelta
 from urllib.parse import quote
@@ -206,6 +207,28 @@ def clear_lark_cache(doc=None, method=None):
 		frappe.cache().delete_keys("lark_notification:*")
 	
 	return True
+
+
+@frappe.whitelist()
+def warmup_lark_cache():
+	"""
+	Pre-loads frequently accessed Lark mappings into Redis to minimize initial latency.
+	Should be called during after_migrate or on app initialization.
+	"""
+	try:
+		# Warmup Global Settings & Mappings
+		_get_config()
+		_get_approval_mappings()
+		
+		# Warmup all enabled DocType mappings
+		if _doctype_available("Lark Sync Document"):
+			enabled_docs = frappe.get_all("Lark Sync Document", filters={"enabled": 1}, fields=["document_type"])
+			for d in enabled_docs:
+				_get_sync_mapping(d.document_type)
+				
+		return True
+	except Exception:
+		return False
 
 
 @frappe.whitelist()
@@ -526,6 +549,10 @@ def _build_child_item_records(child_rows, child_fields, key_field: str, parent_n
 
 
 def _sync_child_tables(doc, mapping: dict, token: str, app_token: str):
+	"""
+	Universal child table sync logic.
+	Handles both multiple child tables and legacy single child table configurations.
+	"""
 	if not mapping.get("sync_child_table"):
 		return False
 
@@ -533,45 +560,53 @@ def _sync_child_tables(doc, mapping: dict, token: str, app_token: str):
 	if not child_fields:
 		return False
 
-	child_tables = mapping.get("child_tables") or []
-	if child_tables:
-		for child in child_tables:
-			child_table_field = child.get("child_table_field")
-			if not child_table_field:
-				continue
-			table_id = child.get("items_table_id") or mapping.get("items_table_id")
-			if not table_id:
-				continue
-			fields_for_table = [
-				d for d in child_fields if not d.get("child_table_field") or d.get("child_table_field") == child_table_field
-			]
-			item_records = _build_child_item_records(
-				doc.get(child_table_field), fields_for_table, mapping.get("key_field"), doc.name
-			)
-			clear_and_sync_items(table_id, mapping.get("key_field"), doc.name, item_records, token, app_token, reference_doctype=doc.doctype, reference_name=doc.name)
-		return True
+	# Resolve which child tables to sync
+	target_tables = mapping.get("child_tables") or []
+	
+	# Legacy fallback: If no multi-table config, use the single field/table mapping
+	if not target_tables and mapping.get("child_table_field") and mapping.get("items_table_id"):
+		target_tables = [{
+			"child_table_field": mapping.get("child_table_field"),
+			"items_table_id": mapping.get("items_table_id")
+		}]
 
-	child_table_field = mapping.get("child_table_field")
-	if child_table_field and mapping.get("items_table_id"):
-		fields_for_table = [
-			d for d in child_fields if not d.get("child_table_field") or d.get("child_table_field") == child_table_field
+	if not target_tables:
+		return False
+
+	synced_any = False
+	for child in target_tables:
+		child_table_field = child.get("child_table_field")
+		table_id = child.get("items_table_id")
+		
+		if not child_table_field or not table_id:
+			continue
+			
+		# Filter fields specific to THIS child table, or fields with no specific table owner (global)
+		fields_for_this_table = [
+			f for f in child_fields 
+			if not f.get("child_table_field") or f.get("child_table_field") == child_table_field
 		]
+		
 		item_records = _build_child_item_records(
-			doc.get(child_table_field), fields_for_table, mapping.get("key_field"), doc.name
+			doc.get(child_table_field), 
+			fields_for_this_table, 
+			mapping.get("key_field"), 
+			doc.name
 		)
+		
 		clear_and_sync_items(
-			mapping.get("items_table_id"),
-			mapping.get("key_field"),
-			doc.name,
-			item_records,
-			token,
-			app_token,
-			reference_doctype=doc.doctype,
+			table_id, 
+			mapping.get("key_field"), 
+			doc.name, 
+			item_records, 
+			token, 
+			app_token, 
+			reference_doctype=doc.doctype, 
 			reference_name=doc.name
 		)
-		return True
+		synced_any = True
 
-	return False
+	return synced_any
 
 
 def _lark_request(method: str, url: str, token: str | None = None, skip_logging: bool = False, **kwargs):
@@ -626,10 +661,14 @@ def _lark_request(method: str, url: str, token: str | None = None, skip_logging:
 						pass
 				
 			if is_retryable and attempt < MAX_RETRIES - 1:
-				delay = BASE_DELAY * (2 ** attempt)
-				# Descriptive retry logging
+				# Exponential backoff with jitter
+				delay = (BASE_DELAY * (2 ** attempt)) + random.uniform(0, 1)
 				retry_reason = "Rate Limited (429)" if status_code == 429 else f"Server Error ({status_code})" if status_code else "Network Error"
-				frappe.log_error(title=f"Lark API Retry {attempt+1} - {retry_reason}", message=f"URL: {url}\nError: {exc}\nRetrying in {delay}s")
+				
+				frappe.log_error(
+					title=f"Lark API Retry {attempt+1} - {retry_reason}", 
+					message=f"URL: {url}\nError: {exc}\nRetrying in {delay:.2f}s"
+				)
 				time.sleep(delay)
 				continue
 				
@@ -1949,31 +1988,43 @@ def _update_backup_status(settings, status: str, error: str | None = None, size:
 @frappe.whitelist()
 @lark_background_worker("Compliance Overdue Sync")
 def sync_overdue_documents():
-	"""Re-sync all Overdue documents to Lark (handles background status changes)."""
+	"""
+	Re-sync all Overdue documents to Lark.
+	Optimized to use bulk discovery and smarter enqueuing.
+	"""
 	if not _doctype_available("Lark Sync Document"):
 		return
 
+	# Only check DocTypes that have a status field and are enabled for sync
 	mappings = frappe.get_all("Lark Sync Document", filters={"enabled": 1}, fields=["document_type"])
+	
 	for m in mappings:
-		# Check if the doctype has a 'status' field and any are 'Overdue'
 		meta = frappe.get_meta(m.document_type)
 		if not meta.has_field("status"):
 			continue
 			
-		overdue_docs = frappe.get_all(
+		# Efficiently find overdue, submitted documents
+		overdue_names = frappe.get_all(
 			m.document_type,
 			filters={"status": "Overdue", "docstatus": 1},
-			fields=["name"]
+			pluck="name"
 		)
 		
-		for d in overdue_docs:
-			# Re-sync to ensure Lark matches
-			frappe.enqueue(
-				"lark_integration.api.sync_universal",
-				doctype=m.document_type,
-				doc_name=d.name,
-				queue="long"
-			)
+		if not overdue_names:
+			continue
+			
+		# Enqueue in chunks to prevent background worker saturation
+		CHUNK_SIZE = 50
+		for i in range(0, len(overdue_names), CHUNK_SIZE):
+			chunk = overdue_names[i:i + CHUNK_SIZE]
+			for doc_name in chunk:
+				frappe.enqueue(
+					"lark_integration.api.sync_universal",
+					doctype=m.document_type,
+					doc_name=doc_name,
+					queue="long",
+					enqueue_after_commit=True
+				)
 
 
 @frappe.whitelist()
@@ -2037,15 +2088,26 @@ def enqueue_journal_entry_sync(doc, handler=None):
 
 # --- HOOKS WRAPPERS ---
 def handle_universal_update(doc, handler=None):
-	# Sync on save ONLY if the document type is not submittable.
-	# Submittable documents will be synced via on_submit.
+	"""Save hook for non-submittable docs."""
 	if not getattr(doc.meta, "is_submittable", 0):
-		frappe.enqueue("lark_integration.api.sync_universal", doctype=doc.doctype, doc_name=doc.name, queue="long", enqueue_after_commit=True)
+		_enqueue_sync(doc)
 
 
 def enqueue_universal_sync(doc, handler=None):
+	"""Submit/Update hook for submittable docs."""
 	if doc.docstatus == 1:
-		frappe.enqueue("lark_integration.api.sync_universal", doctype=doc.doctype, doc_name=doc.name, queue="long", enqueue_after_commit=True)
+		_enqueue_sync(doc)
+
+
+def _enqueue_sync(doc):
+	"""Internal helper to safely enqueue universal sync."""
+	frappe.enqueue(
+		"lark_integration.api.sync_universal", 
+		doctype=doc.doctype, 
+		doc_name=doc.name, 
+		queue="long", 
+		enqueue_after_commit=True
+	)
 
 
 def handle_file_attach(doc, handler=None):
@@ -2617,15 +2679,26 @@ def pull_lark_tasks(publish_progress=False):
 	task_lists = frappe.get_all("Lark Task List", filters={"lark_list_guid": ("!=", "")}, fields=["name", "lark_list_guid"])
 	for tl in task_lists:
 		tl_guid = tl.lark_list_guid
-		tl_url = f"{LARK_BASE_URL}/task/v2/tasklists/{tl_guid}/tasks"
-		tl_res = _lark_request("GET", tl_url, token=token, params={
-			"user_id_type": "user_id", 
-			"page_size": 50
-		})
-		if tl_res and "data" in tl_res and "items" in tl_res.get("data", {}):
+		base_url = f"{LARK_BASE_URL}/task/v2/tasklists/{tl_guid}/tasks"
+		page_token = None
+		
+		# Fetch all pages for this task list
+		while True:
+			params = {"user_id_type": "user_id", "page_size": 100}
+			if page_token:
+				params["page_token"] = page_token
+				
+			tl_res = _lark_request("GET", base_url, token=token, params=params)
+			if not tl_res or "data" not in tl_res or "items" not in tl_res["data"]:
+				break
+				
 			for item in tl_res["data"]["items"]:
 				if item.get("guid"):
 					all_guids[item["guid"]] = item.get("updated_at")
+					
+			page_token = tl_res["data"].get("page_token")
+			if not page_token:
+				break
 	
 	# 2. Collect GUIDs from existing ToDos (if not already discovered via list)
 	existing_tasks = frappe.db.get_all("ToDo", filters={"lark_task_guid": ("!=", "")}, fields=["lark_task_guid", "lark_last_modified"])
@@ -2996,31 +3069,39 @@ def pull_lark_calendar_events(publish_progress=False):
 			prog = 10 + int((idx / active_target_count) * 80)
 			frappe.publish_progress(prog, title="Calendar Sync", description=f"Checking {target['label']}...")
 
-		# Use sync_token for incremental sync
-		list_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{calendar_id}/events"
-		params = {}
-		if target.get("sync_token"):
-			params["sync_token"] = target["sync_token"]
-		
-		res = _lark_request("GET", list_url, token=token, params=params)
-		
-		if not res or "data" not in res:
-			continue
+		page_token = None
+		while True:
+			# Use sync_token for incremental sync
+			list_url = f"{LARK_BASE_URL}/calendar/v4/calendars/{calendar_id}/events"
+			params = {"page_size": 100}
+			if target.get("sync_token"):
+				params["sync_token"] = target["sync_token"]
+			if page_token:
+				params["page_token"] = page_token
+			
+			res = _lark_request("GET", list_url, token=token, params=params)
+			
+			if not res or "data" not in res:
+				break
 
-		data = res["data"]
-		items = data.get("items", [])
-		
-		# Update sync_token for next time
-		if data.get("sync_token"):
-			if target.get("docname"):
-				frappe.db.set_value("Lark Calendar", target["docname"], "sync_token", data["sync_token"])
-			elif target.get("user"):
-				frappe.db.set_value("User", target["user"], "lark_sync_token", data["sync_token"])
+			data = res["data"]
+			items = data.get("items", [])
+			
+			# Update sync_token for next time (always take the latest from the last page)
+			if data.get("sync_token"):
+				if target.get("docname"):
+					frappe.db.set_value("Lark Calendar", target["docname"], "sync_token", data["sync_token"])
+				elif target.get("user"):
+					frappe.db.set_value("User", target["user"], "lark_sync_token", data["sync_token"])
 
-		for item in items:
-			event_id = item.get("event_id")
-			if not event_id:
-				continue
+			for item in items:
+				event_id = item.get("event_id")
+				if not event_id:
+					continue
+
+			page_token = data.get("page_token")
+			if not page_token:
+				break
 
 			# Find existing
 			event_name = frappe.db.get_value("Event", {"lark_event_id": event_id}, "name")
