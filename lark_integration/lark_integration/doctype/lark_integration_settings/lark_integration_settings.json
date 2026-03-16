@@ -70,6 +70,7 @@
   "tab_notifications",
   "enable_global_error_notifications",
   "error_notification_chat_id",
+  "section_break_notification_advanced",
   "notify_on_sync_success",
   "notify_on_batch_success",
   "notification_recipients"
@@ -464,23 +465,31 @@
    "label": "Admin Chat ID"
   },
   {
+   "collapsible": 1,
+   "fieldname": "section_break_notification_advanced",
+   "fieldtype": "Section Break",
+   "label": "Advanced Notifications"
+  },
+  {
    "default": "0",
    "fieldname": "notify_on_sync_success",
    "fieldtype": "Check",
-   "label": "Ping on Success (Individual Docs)"
+   "label": "Ping on Success (Individual Docs)",
+   "description": "Optional: notify on each successful document sync."
   },
   {
    "default": "0",
    "fieldname": "notify_on_batch_success",
    "fieldtype": "Check",
-   "label": "Ping on Success (Batches)"
+   "label": "Ping on Success (Batches)",
+   "description": "Optional: notify on batch sync completion."
   },
   {
    "fieldname": "notification_recipients",
    "fieldtype": "Table",
    "label": "Role-to-Chat Mapping",
    "options": "Lark Notification Recipient",
-   "description": "Map ERPNext Roles to specific Lark Chat Channels."
+   "description": "Optional fallback mapping for system alerts and role-based pings."
   },
   {
    "fieldname": "backup_progress",
