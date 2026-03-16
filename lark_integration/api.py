@@ -1120,7 +1120,7 @@ def process_lark_notifications(doc, event, method=None):
 				html = frappe.get_print(doc.doctype, doc.name, n.print_format)
 				pdf_content = frappe.utils.pdf.get_pdf(html)
 				if pdf_content:
-					token = _get_tenant_token()
+					token = get_lark_token()
 					file_key = upload_file_to_lark_messenger(f"{doc.name}.pdf", pdf_content, token)
 			except Exception:
 				frappe.log_error(f"Lark Notification PDF Error: {n.name}", frappe.get_traceback())
