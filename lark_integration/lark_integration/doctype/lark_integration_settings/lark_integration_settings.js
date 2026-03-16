@@ -77,6 +77,37 @@ frappe.ui.form.on("Lark Integration Settings", {
 				}
 			});
 		}, __("Integration"));
+
+		frm.add_custom_button(__("Fetch Lark Approvals"), () => {
+			frappe.call({
+				method: "lark_integration.api.fetch_lark_approvals",
+				freeze: true,
+				freeze_message: __("Fetching approvals..."),
+				callback: (r) => {
+					if (r.message && r.message.status === "success") {
+						const items = r.message.items || [];
+						if (!items.length) {
+							frappe.msgprint(__("No approvals found in Lark."));
+							return;
+						}
+						const rows = items
+							.map(i => `<tr><td>${i.name || ""}</td><td><code>${i.approval_code || ""}</code></td></tr>`)
+							.join("");
+						const html = `
+							<div style="max-height:300px; overflow:auto;">
+								<table class="table table-bordered">
+									<thead><tr><th>Approval Name</th><th>Approval Code</th></tr></thead>
+									<tbody>${rows}</tbody>
+								</table>
+							</div>
+						`;
+						frappe.msgprint({ title: __("Lark Approvals"), message: html });
+					} else {
+						frappe.msgprint(__("Failed to fetch approvals. Check app permissions."));
+					}
+				}
+			});
+		}, __("Integration"));
 		
 		frm.add_custom_button(__("Test Webhook Security"), () => {
 			frappe.call({

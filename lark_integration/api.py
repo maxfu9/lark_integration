@@ -941,6 +941,31 @@ def fetch_lark_chats():
 	return {"status": "success", "items": chats}
 
 
+@frappe.whitelist()
+def fetch_lark_approvals():
+	"""Fetch approval definitions to help pick approval_code."""
+	token = get_lark_token()
+	if not token:
+		return {"status": "error", "message": "No Lark tenant token. Configure app credentials first."}
+
+	approvals = []
+	page_token = None
+	while True:
+		params = {"page_size": 100}
+		if page_token:
+			params["page_token"] = page_token
+		res = _lark_request("GET", f"{LARK_BASE_URL}/approval/v4/approvals", token=token, params=params, skip_logging=True)
+		if not res or "data" not in res:
+			break
+		data = res["data"]
+		approvals.extend(data.get("items", []) or [])
+		page_token = data.get("page_token")
+		if not page_token:
+			break
+
+	return {"status": "success", "items": approvals}
+
+
 @frappe.whitelist(allow_guest=True)
 def lark_oauth_callback(code=None, state=None):
 	"""OAuth callback to store user access/refresh token."""
