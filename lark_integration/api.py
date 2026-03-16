@@ -3236,8 +3236,8 @@ def _build_event_time_payload(doc):
 		end_date = getdate(doc.ends_on or doc.starts_on)
 		if end_date < start_date:
 			end_date = start_date
-		# Lark expects end_time > start_time; use next-day midnight for all-day
-		end_date_plus = end_date + timedelta(days=1)
+		# Use inclusive end date to avoid spanning an extra day in Lark UI
+		end_date_plus = end_date
 
 		start_dt = datetime.combine(start_date, dt_time.min)
 		end_dt = datetime.combine(end_date_plus, dt_time.min)
