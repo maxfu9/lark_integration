@@ -1027,9 +1027,6 @@ def process_lark_notifications(doc, event, method=None):
 	if not notifications:
 		return
 
-	config = _get_config()
-	role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
-
 	for n in notifications:
 		# 1. Condition Check
 		if n.condition:
@@ -1069,15 +1066,17 @@ def process_lark_notifications(doc, event, method=None):
 			continue
 
 		# 4. Resolve Recipients
-		recipients = frappe.get_all("Lark Notification Recipient", 
-			filters={"parent": n.name}, 
-			fields=["role"]
+		recipients = frappe.get_all(
+			"Lark Notification Recipient",
+			filters={"parent": n.name},
+			fields=["erpnext_role", "lark_chat_id"]
 		)
 		
 		target_chats = set()
 		for r in recipients:
-			chat_id = role_to_chat.get(r.role)
-			if chat_id: target_chats.add(chat_id)
+			chat_id = r.lark_chat_id
+			if chat_id:
+				target_chats.add(chat_id)
 
 		if not target_chats:
 			continue
@@ -1135,9 +1134,6 @@ def lark_scheduled_notifications():
 	if not notifications:
 		return
 
-	config = _get_config()
-	role_to_chat = {r["role"]: r["chat_id"] for r in config.get("notification_recipients", [])}
-
 	from frappe.utils import add_days, today, getdate
 	
 	for n in notifications:
@@ -1173,11 +1169,15 @@ def lark_scheduled_notifications():
 				continue
 				
 			# 3. Resolve Recipients
-			rec_roles = frappe.get_all("Lark Notification Recipient", filters={"parent": n.name}, fields=["role"])
+			rec_roles = frappe.get_all(
+				"Lark Notification Recipient",
+				filters={"parent": n.name},
+				fields=["erpnext_role", "lark_chat_id"]
+			)
 			chats = set()
 			for rr in rec_roles:
-				c_id = role_to_chat.get(rr.role)
-				if c_id: chats.add(c_id)
+				if rr.lark_chat_id:
+					chats.add(rr.lark_chat_id)
 				
 			if chats:
 				send_lark_notification(
