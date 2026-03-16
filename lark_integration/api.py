@@ -4336,8 +4336,15 @@ def create_demo_sales_order_for_approval():
 	# Move to Pending Approval (workflow action)
 	try:
 		doc = frappe.get_doc("Sales Order", doc.name)
+		# Use a user who has Sales User or Sales Manager role for workflow action
+		user_row = frappe.db.get_value("Has Role", {"role": ["in", ["Sales User", "Sales Manager"]]}, "parent")
+		original_user = frappe.session.user
+		if user_row:
+			frappe.set_user(user_row)
 		doc.apply_action("Submit for Approval")
 		frappe.db.commit()
+		if user_row:
+			frappe.set_user(original_user)
 	except Exception:
 		frappe.log_error("Demo Sales Order workflow action failed", frappe.get_traceback())
 		return {"status": "error", "message": "Sales Order created but workflow action failed.", "name": doc.name}
