@@ -1233,7 +1233,8 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 	owner = None
 	if doc_doctype and doc_name:
 		owner = frappe.db.get_value(doc_doctype, doc_name, "owner")
-	token = _get_lark_user_token(owner) or get_lark_token()
+	# Prefer tenant token for notifications (chat_id requires bot scope)
+	token = get_lark_token() or _get_lark_user_token(owner)
 	if not token:
 		return
 
