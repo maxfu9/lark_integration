@@ -988,7 +988,13 @@ def fetch_lark_approval_fields(approval_code):
 	data = res.get("data") or {}
 	approval = data.get("approval") or data.get("approval_detail") or data
 
-	# Best-effort parse of form fields from multiple possible structures
+	fields = _extract_approval_form_fields(approval)
+
+	return {"status": "success", "approval": approval, "fields": fields}
+
+
+def _extract_approval_form_fields(approval):
+	"""Extract approval form fields (flattened) from approval definition."""
 	fields = []
 	form = approval.get("form") or approval.get("form_content") or approval.get("form_json")
 	if isinstance(form, str):
@@ -999,14 +1005,12 @@ def fetch_lark_approval_fields(approval_code):
 			form = None
 
 	if isinstance(form, dict):
-		# Some APIs return {fields: [...]}
 		form_fields = form.get("fields") or form.get("field_list") or form.get("form") or []
 		if isinstance(form_fields, list):
 			fields = form_fields
 	elif isinstance(form, list):
 		fields = form
 
-	# Fallback: check i18n resources if present
 	if not fields:
 		i18n = approval.get("i18n_resources") or approval.get("i18n_resource") or []
 		for item in i18n:
@@ -1027,7 +1031,54 @@ def fetch_lark_approval_fields(approval_code):
 				fields = form_obj
 				break
 
-	return {"status": "success", "approval": approval, "fields": fields}
+	return fields or []
+
+
+def _get_approval_form_maps(approval_code):
+	"""Return maps of field types and fieldList children for an approval code."""
+	cache_key = f"lark_approval_form:{approval_code}"
+	cached = frappe.cache().get_value(cache_key)
+	if cached:
+		return cached
+
+	token = get_lark_token()
+	if not token:
+		return {"types": {}, "children": {}}
+
+	res = _lark_request(
+		"GET",
+		f"{LARK_BASE_URL}/approval/v4/approvals/{approval_code}",
+		token=token,
+		skip_logging=True
+	)
+	data = res.get("data") if res else {}
+	approval = data.get("approval") or data.get("approval_detail") or data or {}
+	fields = _extract_approval_form_fields(approval)
+
+	types = {}
+	children = {}
+
+	for f in fields:
+		fid = f.get("id") or f.get("field_id")
+		ftype = f.get("type")
+		if not fid:
+			continue
+		types[fid] = ftype or "input"
+
+		# fieldList children
+		child_list = f.get("children") or f.get("fields") or f.get("field_list") or f.get("widgets") or []
+		if isinstance(child_list, list) and child_list:
+			child_map = {}
+			for c in child_list:
+				cid = c.get("id") or c.get("field_id")
+				if not cid:
+					continue
+				child_map[cid] = c.get("type") or "input"
+			if child_map:
+				children[fid] = child_map
+
+	frappe.cache().set_value(cache_key, {"types": types, "children": children}, expires_in_sec=3600)
+	return {"types": types, "children": children}
 
 
 @frappe.whitelist(allow_guest=True)
@@ -4447,13 +4498,70 @@ def _process_lark_approval_trigger(doctype, docname):
 	# 6. Build Form Data dynamically
 	mappings = frappe.get_all("Lark Approval Field", filters={"parent": mapping.name}, fields=["*"])
 	form_data = []
+	form_maps = _get_approval_form_maps(mapping.approval_code)
+	type_map = form_maps.get("types", {})
+	child_map = form_maps.get("children", {})
+
+	# Group child field mappings by parent (fieldList)
+	child_mappings = {}
+	top_mappings = []
 	for m in mappings:
+		if "." in (m.lark_field_id or ""):
+			parent_id, child_id = m.lark_field_id.split(".", 1)
+			child_mappings.setdefault(parent_id, []).append((child_id, m))
+		else:
+			top_mappings.append(m)
+
+	from frappe.utils import get_datetime, get_system_timezone
+	import pytz
+	system_tz = pytz.timezone(get_system_timezone())
+
+	def _format_value(val, ftype):
+		if ftype in ("date", "dateTime", "datetime"):
+			dt = get_datetime(val)
+			if dt and dt.tzinfo is None:
+				dt = system_tz.localize(dt)
+			return dt.isoformat() if dt else ""
+		if ftype in ("number", "amount"):
+			try:
+				return float(val)
+			except Exception:
+				return 0
+		return str(val) if val is not None else ""
+
+	for m in top_mappings:
+		field_id = m.lark_field_id
+		ftype = type_map.get(field_id, "input")
 		val = getattr(doc, m.erpnext_field, "")
-		form_data.append({
-			"id": m.lark_field_id,
-			"type": "input",
-			"value": str(val)
-		})
+
+		if ftype == "fieldList":
+			rows = []
+			child_defs = child_map.get(field_id, {})
+			child_fields = child_mappings.get(field_id, [])
+			# If we have child mappings and a child table value
+			if child_fields and isinstance(val, (list, tuple)):
+				for row in val:
+					row_fields = []
+					for child_id, cm in child_fields:
+						child_type = child_defs.get(child_id, "input")
+						child_val = getattr(row, cm.erpnext_field, "")
+						row_fields.append({
+							"id": child_id,
+							"type": child_type,
+							"value": _format_value(child_val, child_type)
+						})
+					rows.append(row_fields)
+			form_data.append({
+				"id": field_id,
+				"type": "fieldList",
+				"value": rows
+			})
+		else:
+			form_data.append({
+				"id": field_id,
+				"type": ftype or "input",
+				"value": _format_value(val, ftype)
+			})
 	
 	form_data.append({
 		"id": "erp_link",
