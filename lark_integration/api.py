@@ -4156,6 +4156,22 @@ def setup_sales_order_lark_workflow(approval_code=None, lark_fields_json=None):
 		}
 
 	# Create or update workflow
+	# Ensure lark_approval_instance_id field exists on Sales Order
+	if not frappe.db.exists("Custom Field", {"dt": doctype, "fieldname": "lark_approval_instance_id"}):
+		try:
+			from frappe.custom.doctype.custom_field.custom_field import create_custom_field
+			create_custom_field(doctype, {
+				"fieldname": "lark_approval_instance_id",
+				"label": "Lark Approval Instance ID",
+				"fieldtype": "Data",
+				"read_only": 1,
+				"hidden": 1,
+				"no_copy": 1
+			})
+		except Exception:
+			# Non-fatal; approval trigger will skip if missing
+			pass
+
 	# Ensure Workflow State records exist (link validation)
 	for state_name in ("Draft", "Pending Approval", "Approved", "Rejected"):
 		if not frappe.db.exists("Workflow State", state_name):
