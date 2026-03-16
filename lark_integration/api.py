@@ -1308,21 +1308,30 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 						"actions": action_elements
 					})
 
+			card_payload = {
+				"header": {
+					"template": "blue",
+					"title": {
+						"content": str(title),
+						"tag": "plain_text"
+					}
+				},
+				"elements": card_elements
+			}
+
 			payload = {
 				"receive_id": chat_id,
 				"msg_type": "interactive",
-				"card": {
-					"header": {
-						"template": "blue",
-						"title": {
-							"content": str(title),
-							"tag": "plain_text"
-						}
-					},
-					"elements": card_elements
-				}
+				# Lark API expects content for interactive messages
+				"content": json.dumps(card_payload)
 			}
 		else:
+			if not message:
+				frappe.log_error(
+					title="Lark Notification Skipped (Empty Message)",
+					message=f"Doc: {doc_doctype} {doc_name}\nTitle: {title}"
+				)
+				continue
 			# Text Message (Post)
 			payload = {
 				"receive_id": chat_id,
