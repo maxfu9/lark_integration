@@ -4067,6 +4067,13 @@ def setup_sales_order_lark_workflow(approval_code=None, lark_fields_json=None):
 		}
 
 	# Create or update workflow
+	# Ensure Workflow State records exist (link validation)
+	for state_name in ("Draft", "Pending Approval", "Approved", "Rejected"):
+		if not frappe.db.exists("Workflow State", state_name):
+			ws = frappe.new_doc("Workflow State")
+			ws.workflow_state_name = state_name
+			ws.save(ignore_permissions=True)
+
 	if frappe.db.exists("Workflow", workflow_name):
 		workflow = frappe.get_doc("Workflow", workflow_name)
 	else:
