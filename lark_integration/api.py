@@ -3259,12 +3259,10 @@ def _build_event_time_payload(doc):
 	end_dt = get_datetime(doc.ends_on) if doc.ends_on else (start_dt + timedelta(hours=1))
 	start_time = {
 		"timestamp": str(int(start_dt.timestamp())),
-		"date": start_dt.date().isoformat(),
 		"timezone": system_tz
 	}
 	end_time = {
 		"timestamp": str(int(end_dt.timestamp())),
-		"date": end_dt.date().isoformat(),
 		"timezone": system_tz
 	}
 	return start_time, end_time
@@ -3429,7 +3427,8 @@ def _sync_event_record_to_lark(doc_name, existing_event_id=None, existing_calend
 		"summary": _format_event_summary(doc),
 		"description": _build_event_description(doc),
 		"start_time": start_time,
-		"end_time": end_time
+		"end_time": end_time,
+		"all_day": 1 if getattr(doc, "all_day", 0) else 0
 	}
 	
 	if doc.location:
