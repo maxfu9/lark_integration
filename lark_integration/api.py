@@ -989,6 +989,17 @@ def lark_oauth_callback(code=None, state=None):
 	)
 	frappe.db.commit()
 
+	# Auto-sync Lark User IDs after successful OAuth connect
+	try:
+		frappe.enqueue(
+			"lark_integration.api.sync_lark_user_ids",
+			queue="short",
+			enqueue_after_commit=True
+		)
+	except Exception:
+		# Non-blocking; user can still proceed
+		pass
+
 	return "Lark account connected. You can close this tab."
 
 
@@ -4015,7 +4026,12 @@ def sync_lark_user_ids():
 @frappe.whitelist()
 def trigger_user_id_sync():
 	"""Whitelisted wrapper to trigger sync from UI."""
-	return sync_lark_user_ids()
+	frappe.enqueue(
+		"lark_integration.api.sync_lark_user_ids",
+		queue="short",
+		enqueue_after_commit=True
+	)
+	return {"status": "queued"}
 
 
 def trigger_lark_approval_globally(doc, method=None):
