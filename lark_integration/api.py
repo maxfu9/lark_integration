@@ -4527,12 +4527,14 @@ def _process_lark_approval_trigger(doctype, docname):
 	# Group child field mappings by parent (fieldList)
 	child_mappings = {}
 	top_mappings = []
+	top_map_by_id = {}
 	for m in mappings:
 		if "." in (m.lark_field_id or ""):
 			parent_id, child_id = m.lark_field_id.split(".", 1)
 			child_mappings.setdefault(parent_id, []).append((child_id, m))
 		else:
 			top_mappings.append(m)
+			top_map_by_id[m.lark_field_id] = m
 
 	from frappe.utils import get_datetime, get_system_timezone
 	import pytz
@@ -4561,8 +4563,11 @@ def _process_lark_approval_trigger(doctype, docname):
 			child_defs = child_map.get(field_id, {})
 			child_fields = child_mappings.get(field_id, [])
 			# If we have child mappings and a child table value
-			if child_fields and isinstance(val, (list, tuple)):
-				for row in val:
+			rows_source = val if isinstance(val, (list, tuple)) else None
+			if rows_source is None and hasattr(doc, "items"):
+				rows_source = doc.items
+			if child_fields and rows_source:
+				for row in rows_source:
 					row_fields = []
 					for child_id, cm in child_fields:
 						child_type = child_defs.get(child_id, "input")
@@ -4584,6 +4589,33 @@ def _process_lark_approval_trigger(doctype, docname):
 				"type": ftype or "input",
 				"value": _format_value(val, ftype)
 			})
+
+	# Handle fieldList parents that only have child mappings (no top mapping)
+	for parent_id, child_fields in child_mappings.items():
+		if parent_id in top_map_by_id:
+			continue
+		parent_type = type_map.get(parent_id, "fieldList")
+		if parent_type != "fieldList":
+			continue
+		rows = []
+		child_defs = child_map.get(parent_id, {})
+		rows_source = doc.items if hasattr(doc, "items") else []
+		for row in rows_source or []:
+			row_fields = []
+			for child_id, cm in child_fields:
+				child_type = child_defs.get(child_id, "input")
+				child_val = getattr(row, cm.erpnext_field, "")
+				row_fields.append({
+					"id": child_id,
+					"type": child_type,
+					"value": _format_value(child_val, child_type)
+				})
+			rows.append(row_fields)
+		form_data.append({
+			"id": parent_id,
+			"type": "fieldList",
+			"value": rows
+		})
 	
 	# Add ERP link only if the approval form defines this widget
 	if "erp_link" in type_map:
