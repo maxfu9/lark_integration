@@ -4074,6 +4074,13 @@ def setup_sales_order_lark_workflow(approval_code=None, lark_fields_json=None):
 			ws.workflow_state_name = state_name
 			ws.save(ignore_permissions=True)
 
+	# Ensure Workflow Action Masters exist
+	for action_name in ("Submit for Approval", "Approve", "Reject"):
+		if not frappe.db.exists("Workflow Action Master", action_name):
+			wa = frappe.new_doc("Workflow Action Master")
+			wa.workflow_action_name = action_name
+			wa.save(ignore_permissions=True)
+
 	if frappe.db.exists("Workflow", workflow_name):
 		workflow = frappe.get_doc("Workflow", workflow_name)
 	else:
