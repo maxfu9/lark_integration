@@ -3142,7 +3142,22 @@ def map_erp_recurrence_to_lark(doc):
 			rrule += f";BYDAY={','.join(days)}"
 	
 	if doc.repeat_till:
-		until = get_datetime(doc.repeat_till).strftime("%Y%m%dT%H%M%SZ")
+		try:
+			from frappe.utils import get_system_timezone
+			import pytz
+			system_tz = get_system_timezone()
+			local_tz = pytz.timezone(system_tz)
+
+			if getattr(doc, "all_day", 0):
+				until_dt = datetime.combine(getdate(doc.repeat_till), dt_time.min)
+			else:
+				base_time = get_datetime(doc.ends_on or doc.starts_on).time()
+				until_dt = datetime.combine(getdate(doc.repeat_till), base_time)
+
+			until_dt = local_tz.localize(until_dt).astimezone(timezone.utc)
+			until = until_dt.strftime("%Y%m%dT%H%M%SZ")
+		except Exception:
+			until = get_datetime(doc.repeat_till).strftime("%Y%m%dT%H%M%SZ")
 		rrule += f";UNTIL={until}"
 		
 	return rrule
@@ -3241,7 +3256,7 @@ def _build_event_time_payload(doc):
 		return start_time, end_time
 
 	start_dt = get_datetime(doc.starts_on)
-	end_dt = get_datetime(doc.ends_on or doc.starts_on)
+	end_dt = get_datetime(doc.ends_on) if doc.ends_on else (start_dt + timedelta(hours=1))
 	start_time = {
 		"timestamp": str(int(start_dt.timestamp())),
 		"date": start_dt.date().isoformat(),
