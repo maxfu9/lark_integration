@@ -4300,7 +4300,9 @@ def create_demo_sales_order_for_approval():
 	if not item:
 		return {"status": "error", "message": "No Item found."}
 
-	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0}, "name")
+	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0, "company": company}, "name")
+	if not warehouse:
+		return {"status": "error", "message": f"No Warehouse found for company {company}."}
 	company_currency = frappe.db.get_value("Company", company, "default_currency") or "USD"
 	price_list = frappe.db.get_value("Price List", {"selling": 1, "enabled": 1}, "name") or "Standard Selling"
 
