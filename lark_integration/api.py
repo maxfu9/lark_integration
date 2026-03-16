@@ -1174,7 +1174,10 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 	if not config.get("enabled"):
 		return
 
-	token = _get_lark_user_token(doc.owner) or get_lark_token()
+	owner = None
+	if doc_doctype and doc_name:
+		owner = frappe.db.get_value(doc_doctype, doc_name, "owner")
+	token = _get_lark_user_token(owner) or get_lark_token()
 	if not token:
 		return
 
@@ -1197,6 +1200,11 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 		if sm_chat: chats.add(sm_chat)
 
 	if not chats:
+		# No recipients resolved; surface this for debugging
+		frappe.log_error(
+			title="Lark Notification Skipped (No Recipients)",
+			message=f"Doc: {doc_doctype} {doc_name}\nTitle: {title}"
+		)
 		return
 
 	# 3. Dispatch Content
