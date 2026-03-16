@@ -1029,6 +1029,22 @@ def process_lark_notifications(doc, event, method=None):
 		frappe.cache().set_value(cache_key, notifications, expires_in_sec=3600)
 	
 	if not notifications:
+		# Debug: if any rules exist for this DocType but none match this event, log once per doc+event
+		debug_key = f"lark_notification_debug:nomatch:{doc.doctype}:{doc.name}:{event}"
+		if not frappe.cache().get_value(debug_key):
+			any_rule = frappe.get_all(
+				"Lark Notification",
+				filters={"enabled": 1, "document_type": doc.doctype},
+				fields=["name"],
+				limit=1,
+				ignore_permissions=True
+			)
+			if any_rule:
+				frappe.log_error(
+					title="Lark Notification Debug (No Rules Matched)",
+					message=f"Doc: {doc.doctype} {doc.name}\nEvent: {event}\nDocstatus: {doc.docstatus}"
+				)
+			frappe.cache().set_value(debug_key, True, expires_in_sec=3600)
 		return
 
 	for n in notifications:
