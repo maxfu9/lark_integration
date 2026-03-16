@@ -4283,6 +4283,66 @@ def setup_sales_order_lark_workflow(approval_code=None, lark_fields_json=None):
 	return {"status": "success", "workflow": workflow_name, "mapping_created": bool(approval_code and lark_fields_json)}
 
 
+@frappe.whitelist()
+def create_demo_sales_order_for_approval():
+	"""Create a minimal demo Sales Order and move it to Pending Approval."""
+	from frappe.utils import today, add_days
+
+	company = frappe.defaults.get_user_default("company") or frappe.db.get_value("Company", {}, "name")
+	if not company:
+		return {"status": "error", "message": "No Company found."}
+
+	customer = frappe.db.get_value("Customer", {"disabled": 0}, "name")
+	if not customer:
+		return {"status": "error", "message": "No Customer found."}
+
+	item = frappe.db.get_value("Item", {"disabled": 0}, ["name", "item_name", "stock_uom"], as_dict=True)
+	if not item:
+		return {"status": "error", "message": "No Item found."}
+
+	warehouse = frappe.db.get_value("Warehouse", {"is_group": 0}, "name")
+	company_currency = frappe.db.get_value("Company", company, "default_currency") or "USD"
+	price_list = frappe.db.get_value("Price List", {"selling": 1, "enabled": 1}, "name") or "Standard Selling"
+
+	doc = frappe.get_doc({
+		"doctype": "Sales Order",
+		"company": company,
+		"customer": customer,
+		"transaction_date": today(),
+		"delivery_date": add_days(today(), 1),
+		"selling_price_list": price_list,
+		"price_list_currency": company_currency,
+		"currency": company_currency,
+		"conversion_rate": 1,
+		"items": [
+			{
+				"item_code": item.name,
+				"item_name": item.item_name,
+				"uom": item.stock_uom,
+				"stock_uom": item.stock_uom,
+				"qty": 1,
+				"rate": 100,
+				"warehouse": warehouse,
+				"delivery_date": add_days(today(), 1),
+			}
+		]
+	})
+
+	doc.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+	# Move to Pending Approval (workflow action)
+	try:
+		doc = frappe.get_doc("Sales Order", doc.name)
+		doc.apply_action("Submit for Approval")
+		frappe.db.commit()
+	except Exception:
+		frappe.log_error("Demo Sales Order workflow action failed", frappe.get_traceback())
+		return {"status": "error", "message": "Sales Order created but workflow action failed.", "name": doc.name}
+
+	return {"status": "success", "name": doc.name}
+
+
 def _process_lark_approval_trigger(doctype, docname):
 	"""Actual worker to push approval request to Lark."""
 	# Safety check for migration
