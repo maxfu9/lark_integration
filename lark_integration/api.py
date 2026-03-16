@@ -3225,6 +3225,7 @@ def _build_event_description(doc):
 def _build_event_time_payload(doc):
 	"""Build Lark event time payload, including All Day handling."""
 	from frappe.utils import get_datetime, getdate, get_system_timezone
+	from datetime import timezone
 	import pytz
 
 	system_tz = get_system_timezone()
