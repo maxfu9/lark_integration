@@ -1135,38 +1135,23 @@ def process_lark_notifications(doc, event, method=None):
 				ignore_permissions=True
 			)
 
-		# 7. Send (async if attach_print to avoid blocking)
-		if n.attach_print:
-			frappe.enqueue(
-				"lark_integration.api.send_lark_notification_job",
-				queue="long",
-				enqueue_after_commit=True,
-				message=message,
-				title=subject,
-				target_chats=list(target_chats),
-				is_interactive=n.is_interactive,
-				actions=actions,
-				doc_doctype=doc.doctype,
-				doc_name=doc.name,
-				attach_print=True,
-				print_format=n.print_format,
-				reference_doctype="Lark Notification",
-				reference_name=n.name
-			)
-		else:
-			send_lark_notification(
-				message, 
-				title=subject, 
-				target_chats=list(target_chats), 
-				file_key=file_key, 
-				file_name=f"{doc.name}.pdf",
-				reference_doctype="Lark Notification",
-				reference_name=n.name,
-				is_interactive=n.is_interactive,
-				actions=actions,
-				doc_doctype=doc.doctype,
-				doc_name=doc.name
-			)
+		# 7. Send via background worker (native-notification style)
+		frappe.enqueue(
+			"lark_integration.api.send_lark_notification_job",
+			queue="short",
+			enqueue_after_commit=True,
+			message=message,
+			title=subject,
+			target_chats=list(target_chats),
+			is_interactive=n.is_interactive,
+			actions=actions,
+			doc_doctype=doc.doctype,
+			doc_name=doc.name,
+			attach_print=bool(n.attach_print),
+			print_format=n.print_format,
+			reference_doctype="Lark Notification",
+			reference_name=n.name
+		)
 
 	# Mark Submit notifications as sent to avoid duplicate on_update firing
 	if event == "Submit":
