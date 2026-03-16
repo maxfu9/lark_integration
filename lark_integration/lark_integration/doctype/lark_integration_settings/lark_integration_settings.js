@@ -152,6 +152,41 @@ frappe.ui.form.on("Lark Integration Settings", {
 				__("Fetch")
 			);
 		}, __("Integration"));
+
+		frm.add_custom_button(__("Fetch Approval Raw"), () => {
+			frappe.prompt(
+				{
+					fieldtype: "Data",
+					fieldname: "approval_code",
+					label: __("Approval Code"),
+					reqd: 1
+				},
+				(values) => {
+					frappe.call({
+						method: "lark_integration.api.fetch_lark_approval_raw",
+						freeze: true,
+						freeze_message: __("Fetching raw approval definition..."),
+						args: { approval_code: values.approval_code },
+						callback: (r) => {
+							if (r.message && r.message.status === "success") {
+								const data = r.message.data || {};
+								const pretty = JSON.stringify(data, null, 2);
+								const html = `
+									<div style="max-height:300px; overflow:auto;">
+										<pre style="white-space: pre-wrap;">${frappe.utils.escape_html(pretty)}</pre>
+									</div>
+								`;
+								frappe.msgprint({ title: __("Approval Raw JSON"), message: html, wide: true });
+							} else {
+								frappe.msgprint(__("Failed to fetch raw approval definition."));
+							}
+						}
+					});
+				},
+				__("Fetch Approval Raw"),
+				__("Fetch")
+			);
+		}, __("Integration"));
 		
 		frm.add_custom_button(__("Test Webhook Security"), () => {
 			frappe.call({

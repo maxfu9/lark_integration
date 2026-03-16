@@ -993,6 +993,28 @@ def fetch_lark_approval_fields(approval_code):
 	return {"status": "success", "approval": approval, "fields": fields}
 
 
+@frappe.whitelist()
+def fetch_lark_approval_raw(approval_code):
+	"""Fetch raw approval definition JSON for debugging field IDs."""
+	if not approval_code:
+		return {"status": "error", "message": "approval_code is required"}
+
+	token = get_lark_token()
+	if not token:
+		return {"status": "error", "message": "No Lark tenant token. Configure app credentials first."}
+
+	res = _lark_request(
+		"GET",
+		f"{LARK_BASE_URL}/approval/v4/approvals/{approval_code}",
+		token=token,
+		skip_logging=True
+	)
+	if not res or "data" not in res:
+		return {"status": "error", "message": "Failed to fetch approval detail."}
+
+	return {"status": "success", "data": res.get("data")}
+
+
 def _extract_approval_form_fields(approval):
 	"""Extract approval form fields (flattened) from approval definition."""
 	fields = []
