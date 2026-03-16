@@ -1012,6 +1012,12 @@ def process_lark_notifications(doc, event, method=None):
 	Mirrors native ERPNext Notification behavior.
 	Support for: New, Save, Submit, Cancel, Value Change, Method.
 	"""
+	# De-dup Submit notifications within a short window (submit triggers on_update too)
+	if event == "Submit":
+		dedupe_key = f"lark_notification_sent:{doc.doctype}:{doc.name}:Submit"
+		if frappe.cache().get_value(dedupe_key):
+			return
+
 	# 1. Fetch Rules (Cached by DocType)
 	cache_key = f"lark_notifications:{doc.doctype}:{event}"
 	notifications = frappe.cache().get_value(cache_key)
@@ -1142,6 +1148,10 @@ def process_lark_notifications(doc, event, method=None):
 			doc_doctype=doc.doctype,
 			doc_name=doc.name
 		)
+
+	# Mark Submit notifications as sent to avoid duplicate on_update firing
+	if event == "Submit":
+		frappe.cache().set_value(dedupe_key, True, expires_in_sec=60)
 
 
 def trigger_lark_notification(doc, method):
