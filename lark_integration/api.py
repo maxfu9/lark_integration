@@ -1125,7 +1125,7 @@ def process_lark_notifications(doc, event, method=None):
 			except Exception:
 				frappe.log_error(f"Lark Notification PDF Error: {n.name}", frappe.get_traceback())
 
-		# 6. Send
+		# 6. Actions
 		actions = []
 		if n.is_interactive:
 			actions = frappe.get_all(
@@ -1135,19 +1135,38 @@ def process_lark_notifications(doc, event, method=None):
 				ignore_permissions=True
 			)
 
-		send_lark_notification(
-			message, 
-			title=subject, 
-			target_chats=list(target_chats), 
-			file_key=file_key, 
-			file_name=f"{doc.name}.pdf",
-			reference_doctype="Lark Notification",
-			reference_name=n.name,
-			is_interactive=n.is_interactive,
-			actions=actions,
-			doc_doctype=doc.doctype,
-			doc_name=doc.name
-		)
+		# 7. Send (async if attach_print to avoid blocking)
+		if n.attach_print:
+			frappe.enqueue(
+				"lark_integration.api.send_lark_notification_job",
+				queue="long",
+				enqueue_after_commit=True,
+				message=message,
+				title=subject,
+				target_chats=list(target_chats),
+				is_interactive=n.is_interactive,
+				actions=actions,
+				doc_doctype=doc.doctype,
+				doc_name=doc.name,
+				attach_print=True,
+				print_format=n.print_format,
+				reference_doctype="Lark Notification",
+				reference_name=n.name
+			)
+		else:
+			send_lark_notification(
+				message, 
+				title=subject, 
+				target_chats=list(target_chats), 
+				file_key=file_key, 
+				file_name=f"{doc.name}.pdf",
+				reference_doctype="Lark Notification",
+				reference_name=n.name,
+				is_interactive=n.is_interactive,
+				actions=actions,
+				doc_doctype=doc.doctype,
+				doc_name=doc.name
+			)
 
 	# Mark Submit notifications as sent to avoid duplicate on_update firing
 	if event == "Submit":
@@ -1291,22 +1310,33 @@ def send_lark_notification(message, title="ERPNext Lark Alert", is_error=False, 
 			if actions:
 				action_elements = []
 				for a in actions:
+					if isinstance(a, dict):
+						label = a.get("label")
+						action_type = a.get("action_type")
+						action_value = a.get("action_value")
+						btn_style = a.get("btn_style")
+					else:
+						label = getattr(a, "label", None)
+						action_type = getattr(a, "action_type", None)
+						action_value = getattr(a, "action_value", None)
+						btn_style = getattr(a, "btn_style", None)
+
 					element = {
 						"tag": "button",
 						"text": {
-							"content": a.label,
+							"content": label,
 							"tag": "plain_text"
 						},
-						"type": a.btn_style or "default"
+						"type": btn_style or "default"
 					}
 					
-					if a.action_type == "URL":
-						element["url"] = a.action_value
+					if action_type == "URL":
+						element["url"] = action_value
 					else:
 						# Workflow or Method
 						element["value"] = {
-							"action_type": a.action_type,
-							"action_value": a.action_value,
+							"action_type": action_type,
+							"action_value": action_value,
 							"doc_doctype": doc_doctype,
 							"doc_name": doc_name
 						}
@@ -1396,6 +1426,37 @@ def upload_file_to_lark_messenger(file_name, content, token):
 	if payload:
 		return payload.get("data", {}).get("file_key")
 	return None
+
+
+def send_lark_notification_job(message, title, target_chats, is_interactive=False, actions=None, doc_doctype=None, doc_name=None, attach_print=False, print_format=None, reference_doctype=None, reference_name=None):
+	"""Background worker to send Lark notifications (used for Attach Print)."""
+	file_key = None
+	file_name = None
+	if attach_print and doc_doctype and doc_name:
+		try:
+			doc = frappe.get_doc(doc_doctype, doc_name)
+			html = frappe.get_print(doc.doctype, doc.name, print_format)
+			pdf_content = frappe.utils.pdf.get_pdf(html)
+			if pdf_content:
+				token = get_lark_token()
+				file_name = f"{doc.name}.pdf"
+				file_key = upload_file_to_lark_messenger(file_name, pdf_content, token)
+		except Exception:
+			frappe.log_error(f"Lark Notification PDF Error (Async): {doc_doctype} {doc_name}", frappe.get_traceback())
+
+	send_lark_notification(
+		message,
+		title=title,
+		target_chats=target_chats,
+		file_key=file_key,
+		file_name=file_name,
+		reference_doctype=reference_doctype,
+		reference_name=reference_name,
+		is_interactive=is_interactive,
+		actions=actions,
+		doc_doctype=doc_doctype,
+		doc_name=doc_name
+	)
 
 
 def lark_background_worker(job_name):
