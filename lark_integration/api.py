@@ -1054,103 +1054,25 @@ def process_lark_notifications(doc, event, method=None):
 		return
 
 	for n in notifications:
-		# 1. Condition Check
-		if n.condition:
-			try:
-				if not frappe.safe_eval(n.condition, None, {"doc": doc, "frappe": frappe}):
-					continue
-			except Exception:
-				frappe.log_error(f"Lark Notification Condition Error: {n.name}", frappe.get_traceback())
-				continue
-
-		# 2. Value Change Check
+		# 1. Value Change Check (must be computed in request context)
 		if event == "Value Change" and n.changed_field:
-			# If we have before-save state (for real-time hooks)
 			if doc.get_doc_before_save():
 				if doc.get(n.changed_field) == doc.get_doc_before_save().get(n.changed_field):
 					continue
-			# For background sync, we attempt a database comparison if possible
 			else:
 				db_val = frappe.db.get_value(doc.doctype, doc.name, n.changed_field)
 				if db_val == doc.get(n.changed_field):
 					continue
 
-		# 3. Render Templates with Expanded Context
-		try:
-			format_fn = getattr(frappe, "format_value", None) or getattr(frappe.utils, "format_value", None)
-			context = {
-				"doc": doc,
-				"frappe": frappe,
-				"get_url": frappe.utils.get_url,
-				"format": format_fn,
-				"get_datetime": frappe.utils.get_datetime,
-				"today": frappe.utils.today
-			}
-			subject = frappe.render_template(n.subject, context)
-			message = frappe.render_template(n.message, context)
-		except Exception:
-			frappe.log_error(f"Lark Notification Template Error: {n.name}", frappe.get_traceback())
-			continue
-
-		# 4. Resolve Recipients
-		recipients = frappe.get_all(
-			"Lark Notification Recipient",
-			filters={"parent": n.name},
-			fields=["erpnext_role", "lark_chat_id"],
-			ignore_permissions=True
-		)
-		
-		target_chats = set()
-		for r in recipients:
-			chat_id = r.lark_chat_id
-			if chat_id:
-				target_chats.add(chat_id)
-
-		if not target_chats:
-			frappe.log_error(
-				title="Lark Notification Skipped (No Recipients)",
-				message=f"Notification: {n.name}\nDoc: {doc.doctype} {doc.name}"
-			)
-			continue
-
-		# 5. Handle PDF Attachment
-		file_key = None
-		if n.attach_print:
-			try:
-				html = frappe.get_print(doc.doctype, doc.name, n.print_format)
-				pdf_content = frappe.utils.pdf.get_pdf(html)
-				if pdf_content:
-					token = get_lark_token()
-					file_key = upload_file_to_lark_messenger(f"{doc.name}.pdf", pdf_content, token)
-			except Exception:
-				frappe.log_error(f"Lark Notification PDF Error: {n.name}", frappe.get_traceback())
-
-		# 6. Actions
-		actions = []
-		if n.is_interactive:
-			actions = frappe.get_all(
-				"Lark Notification Action",
-				filters={"parent": n.name},
-				fields=["label", "action_type", "action_value", "btn_style"],
-				ignore_permissions=True
-			)
-
-		# 7. Send via background worker (native-notification style)
+		# 2. Enqueue notification rule processing (fast path)
 		frappe.enqueue(
-			"lark_integration.api.send_lark_notification_job",
+			"lark_integration.api.process_lark_notification_rule_job",
 			queue="short",
 			enqueue_after_commit=True,
-			message=message,
-			title=subject,
-			target_chats=list(target_chats),
-			is_interactive=n.is_interactive,
-			actions=actions,
+			notification_name=n.name,
 			doc_doctype=doc.doctype,
 			doc_name=doc.name,
-			attach_print=bool(n.attach_print),
-			print_format=n.print_format,
-			reference_doctype="Lark Notification",
-			reference_name=n.name
+			event=event
 		)
 
 	# Mark Submit notifications as sent to avoid duplicate on_update firing
@@ -1442,6 +1364,92 @@ def send_lark_notification_job(message, title, target_chats, is_interactive=Fals
 		doc_doctype=doc_doctype,
 		doc_name=doc_name
 	)
+
+
+def process_lark_notification_rule_job(notification_name, doc_doctype, doc_name, event):
+	"""Background worker to process a single notification rule."""
+	try:
+		notification = frappe.get_doc("Lark Notification", notification_name)
+		if not notification.enabled:
+			return
+
+		# Ensure event matches (defensive)
+		if notification.event != event:
+			return
+
+		doc = frappe.get_doc(doc_doctype, doc_name)
+
+		# Condition Check
+		if notification.condition:
+			try:
+				if not frappe.safe_eval(notification.condition, None, {"doc": doc, "frappe": frappe}):
+					return
+			except Exception:
+				frappe.log_error(f"Lark Notification Condition Error: {notification.name}", frappe.get_traceback())
+				return
+
+		# Render Templates
+		try:
+			format_fn = getattr(frappe, "format_value", None) or getattr(frappe.utils, "format_value", None)
+			context = {
+				"doc": doc,
+				"frappe": frappe,
+				"get_url": frappe.utils.get_url,
+				"format": format_fn,
+				"get_datetime": frappe.utils.get_datetime,
+				"today": frappe.utils.today
+			}
+			subject = frappe.render_template(notification.subject, context)
+			message = frappe.render_template(notification.message, context)
+		except Exception:
+			frappe.log_error(f"Lark Notification Template Error: {notification.name}", frappe.get_traceback())
+			return
+
+		# Resolve Recipients
+		recipients = frappe.get_all(
+			"Lark Notification Recipient",
+			filters={"parent": notification.name},
+			fields=["erpnext_role", "lark_chat_id"],
+			ignore_permissions=True
+		)
+
+		target_chats = set()
+		for r in recipients:
+			if r.lark_chat_id:
+				target_chats.add(r.lark_chat_id)
+
+		if not target_chats:
+			frappe.log_error(
+				title="Lark Notification Skipped (No Recipients)",
+				message=f"Notification: {notification.name}\nDoc: {doc.doctype} {doc.name}"
+			)
+			return
+
+		# Actions
+		actions = []
+		if notification.is_interactive:
+			actions = frappe.get_all(
+				"Lark Notification Action",
+				filters={"parent": notification.name},
+				fields=["label", "action_type", "action_value", "btn_style"],
+				ignore_permissions=True
+			)
+
+		send_lark_notification_job(
+			message=message,
+			title=subject,
+			target_chats=list(target_chats),
+			is_interactive=notification.is_interactive,
+			actions=actions,
+			doc_doctype=doc.doctype,
+			doc_name=doc.name,
+			attach_print=bool(notification.attach_print),
+			print_format=notification.print_format,
+			reference_doctype="Lark Notification",
+			reference_name=notification.name
+		)
+	except Exception:
+		frappe.log_error("Lark Notification Job Failed", frappe.get_traceback())
 
 
 def lark_background_worker(job_name):
