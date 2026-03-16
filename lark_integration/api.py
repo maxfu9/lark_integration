@@ -4563,11 +4563,13 @@ def _process_lark_approval_trigger(doctype, docname):
 				"value": _format_value(val, ftype)
 			})
 	
-	form_data.append({
-		"id": "erp_link",
-		"type": "input",
-		"value": get_erp_link(doc.doctype, doc.name)
-	})
+	# Add ERP link only if the approval form defines this widget
+	if "erp_link" in type_map:
+		form_data.append({
+			"id": "erp_link",
+			"type": type_map.get("erp_link", "input"),
+			"value": get_erp_link(doc.doctype, doc.name)
+		})
 
 	approval_url = f"{LARK_BASE_URL}/approval/v4/instances"
 	payload = {
