@@ -875,6 +875,17 @@ def _get_lark_user_token(user):
 	return None
 
 
+def _get_user_token_cached(token_cache, user):
+	"""Lightweight cache wrapper for user tokens during batch sync."""
+	if not user:
+		return None
+	if user in token_cache:
+		return token_cache[user]
+	token = _get_lark_user_token(user)
+	token_cache[user] = token
+	return token
+
+
 @frappe.whitelist()
 def get_lark_oauth_url():
 	"""Return Lark OAuth URL for current user to authorize."""
@@ -2704,7 +2715,8 @@ def _sync_todo_record_to_lark(doc_name, existing_guid=None):
 		if not settings or not settings.todo_sync_enabled:
 			return
 
-		token = get_lark_token()
+		target_user = doc.allocated_to or doc.assigned_by or doc.owner
+		token = _get_lark_user_token(target_user) or _get_lark_user_token(doc.owner) or get_lark_token()
 		if not token:
 			return
 
@@ -2779,7 +2791,6 @@ def _sync_todo_record_to_lark(doc_name, existing_guid=None):
 			payload["due"] = {"timestamp": "0", "is_all_day": False}
 
 		# Assignee
-		target_user = doc.allocated_to or doc.assigned_by or doc.owner
 		assignee_lark_id = frappe.db.get_value("User", target_user, "lark_user_id")
 		if assignee_lark_id:
 			payload["members"] = [{"id": assignee_lark_id, "role": "assignee", "type": "user"}]
@@ -2893,14 +2904,15 @@ def delete_lark_task(doc, method=None):
 	frappe.enqueue(
 		"lark_integration.api._delete_lark_task_job",
 		guid=doc.lark_task_guid,
+		owner=doc.owner,
 		queue="long",
 		enqueue_after_commit=True
 	)
 
 
-def _delete_lark_task_job(guid):
+def _delete_lark_task_job(guid, owner=None):
 	"""Background job to delete a Lark task."""
-	token = get_lark_token()
+	token = _get_lark_user_token(owner) or get_lark_token()
 	if not token:
 		return
 
@@ -2950,6 +2962,7 @@ def pull_lark_tasks(publish_progress=False):
 	token = get_lark_token()
 	if not token:
 		return
+	token_cache = {}
 
 	# Sync task list deletions: clean up ERPNext lists that no longer exist in Lark
 	try:
@@ -2958,10 +2971,13 @@ def pull_lark_tasks(publish_progress=False):
 		pass  # Don't break the sync if list cleanup fails
 
 	# 1. Collect GUIDs from all mapped Task Lists
-	all_guids = {} # Use dict to store {guid: updated_at}
-	task_lists = frappe.get_all("Lark Task List", filters={"lark_list_guid": ("!=", "")}, fields=["name", "lark_list_guid"])
+	all_guids = {} # guid -> {"updated_at": ..., "token": ...}
+	task_lists = frappe.get_all("Lark Task List", filters={"lark_list_guid": ("!=", "")}, fields=["name", "lark_list_guid", "owner"])
 	for tl in task_lists:
 		tl_guid = tl.lark_list_guid
+		list_token = _get_user_token_cached(token_cache, tl.owner) or token
+		if not list_token:
+			continue
 		base_url = f"{LARK_BASE_URL}/task/v2/tasklists/{tl_guid}/tasks"
 		page_token = None
 		
@@ -2971,32 +2987,35 @@ def pull_lark_tasks(publish_progress=False):
 			if page_token:
 				params["page_token"] = page_token
 				
-			tl_res = _lark_request("GET", base_url, token=token, params=params)
+			tl_res = _lark_request("GET", base_url, token=list_token, params=params)
 			if not tl_res or "data" not in tl_res or "items" not in tl_res["data"]:
 				break
 				
 			for item in tl_res["data"]["items"]:
 				if item.get("guid"):
-					all_guids[item["guid"]] = item.get("updated_at")
+					all_guids[item["guid"]] = {"updated_at": item.get("updated_at"), "token": list_token}
 					
 			page_token = tl_res["data"].get("page_token")
 			if not page_token:
 				break
 	
 	# 2. Collect GUIDs from existing ToDos (if not already discovered via list)
-	existing_tasks = frappe.db.get_all("ToDo", filters={"lark_task_guid": ("!=", "")}, fields=["lark_task_guid", "lark_last_modified"])
+	existing_tasks = frappe.db.get_all("ToDo", filters={"lark_task_guid": ("!=", "")}, fields=["lark_task_guid", "lark_last_modified", "owner"])
 	for et in existing_tasks:
 		if et.lark_task_guid not in all_guids:
-			all_guids[et.lark_task_guid] = et.lark_last_modified # Store local modified time if remote not known yet
+			owner_token = _get_user_token_cached(token_cache, et.owner) or token
+			all_guids[et.lark_task_guid] = {"updated_at": et.lark_last_modified, "token": owner_token}
 
 	# 3. Fetch full details for EVERY guid and sync
 	total = len(all_guids)
 	synced = 0
 	
-	for i, (guid, remote_updated_at) in enumerate(all_guids.items()):
+	for i, (guid, info) in enumerate(all_guids.items()):
 		if publish_progress:
 			prog = 10 + int((i / total) * 80)
 			frappe.publish_progress(prog, title="ToDo Sync", description=f"Syncing task {i+1}/{total}...")
+		remote_updated_at = info.get("updated_at")
+		task_token = info.get("token") or token
 
 		# Optimization: Skip detail fetch if we already have the task and its modification time matches
 		local_modified = None
@@ -3007,7 +3026,7 @@ def pull_lark_tasks(publish_progress=False):
 
 		# Fetch full detail
 		detail_url = f"{LARK_BASE_URL}/task/v2/tasks/{guid}"
-		detail_res = _lark_request("GET", detail_url, token=token, params={"user_id_type": "user_id"})
+		detail_res = _lark_request("GET", detail_url, token=task_token, params={"user_id_type": "user_id"})
 		if not detail_res or "data" not in detail_res or "task" not in detail_res["data"]:
 			continue
 			
@@ -3129,6 +3148,113 @@ def map_erp_recurrence_to_lark(doc):
 	return rrule
 
 
+def _format_event_summary(doc):
+	"""Prefix ERPNext status in Lark event summary."""
+	base = doc.subject or "(No Subject)"
+	status = (doc.status or "").strip().lower()
+	prefix_map = {
+		"open": "[Open]",
+		"complete": "[Complete]",
+		"completed": "[Complete]",
+		"closed": "[Closed]",
+		"cancelled": "[Cancelled]"
+	}
+	prefix = prefix_map.get(status)
+	if not prefix:
+		return base
+
+	# Remove any existing status prefix to avoid stacking
+	for p in prefix_map.values():
+		if base.startswith(f"{p} "):
+			base = base[len(p) + 1:]
+			break
+
+	return f"{prefix} {base}"
+
+
+def _build_event_description(doc):
+	"""Append ERPNext link and participant attendance to the description."""
+	desc = doc.description or ""
+	try:
+		from frappe.utils import strip_html
+		desc = strip_html(desc or "")
+	except Exception:
+		pass
+
+	lines = [desc] if desc else []
+
+	try:
+		site_url = frappe.utils.get_url()
+		event_url = f"{site_url}/app/event/{doc.name}"
+		lines.append(f"ERPNext Link: {event_url}")
+	except Exception:
+		pass
+
+	if doc.event_participants:
+		lines.append("Participants:")
+		for p in doc.event_participants:
+			label = None
+			if p.reference_doctype == "User" and p.reference_docname:
+				label = p.reference_docname
+			elif p.email:
+				label = p.email
+			else:
+				label = f"{p.reference_doctype} {p.reference_docname}".strip()
+
+			status = (p.attending or "Maybe").strip()
+			lines.append(f"- {label} ({status})")
+
+	return "\n".join([l for l in lines if l])
+
+
+def _build_event_time_payload(doc):
+	"""Build Lark event time payload, including All Day handling."""
+	from frappe.utils import get_datetime, getdate, get_system_timezone
+	import pytz
+
+	system_tz = get_system_timezone()
+	local_tz = pytz.timezone(system_tz)
+
+	if getattr(doc, "all_day", 0):
+		start_date = getdate(doc.starts_on)
+		end_date = getdate(doc.ends_on or doc.starts_on)
+		if end_date < start_date:
+			end_date = start_date
+		# Lark expects end_time > start_time; use next-day midnight for all-day
+		end_date_plus = end_date + timedelta(days=1)
+
+		start_dt = datetime.combine(start_date, dt_time.min)
+		end_dt = datetime.combine(end_date_plus, dt_time.min)
+		start_dt = local_tz.localize(start_dt).astimezone(timezone.utc)
+		end_dt = local_tz.localize(end_dt).astimezone(timezone.utc)
+
+		start_time = {
+			"date": start_date.isoformat(),
+			"timestamp": str(int(start_dt.timestamp())),
+			"timezone": system_tz
+		}
+		end_time = {
+			"date": end_date_plus.isoformat(),
+			"timestamp": str(int(end_dt.timestamp())),
+			"timezone": system_tz
+		}
+		return start_time, end_time
+
+	start_dt = get_datetime(doc.starts_on)
+	end_dt = get_datetime(doc.ends_on or doc.starts_on)
+	start_time = {
+		"timestamp": str(int(start_dt.timestamp())),
+		"date": start_dt.date().isoformat(),
+		"timezone": system_tz
+	}
+	end_time = {
+		"timestamp": str(int(end_dt.timestamp())),
+		"date": end_dt.date().isoformat(),
+		"timezone": system_tz
+	}
+	return start_time, end_time
+
+
 def sync_event_attendees(calendar_id, event_id, erp_participants, token):
 	"""Pushes ERPNext participants to Lark Event attendees."""
 	if not erp_participants:
@@ -3136,6 +3262,9 @@ def sync_event_attendees(calendar_id, event_id, erp_participants, token):
 
 	attendees = []
 	for p in erp_participants:
+		if p.attending and str(p.attending).strip().lower() == "no":
+			continue
+
 		if p.reference_doctype == "User":
 			lark_user_id = frappe.db.get_value("User", p.reference_docname, "lark_user_id")
 			if lark_user_id:
@@ -3143,12 +3272,61 @@ def sync_event_attendees(calendar_id, event_id, erp_participants, token):
 					"type": "user",
 					"attendee_id": lark_user_id
 				})
+				continue
+
+		if p.email:
+			attendees.append({
+				"type": "third_party",
+				"third_party_email": p.email
+			})
 	
 	if not attendees:
 		return
 
 	url = f"{LARK_BASE_URL}/calendar/v4/calendars/{calendar_id}/events/{event_id}/attendees"
 	_lark_request("POST", url, token=token, json={"attendees": attendees})
+
+
+def _notify_event_participants(doc, token):
+	"""Send a Lark chat message to event participants (user_id only)."""
+	if not doc.event_participants:
+		return
+
+	user_ids = []
+	for p in doc.event_participants:
+		if p.reference_doctype == "User" and p.reference_docname:
+			lark_user_id = frappe.db.get_value("User", p.reference_docname, "lark_user_id")
+			if lark_user_id:
+				user_ids.append(lark_user_id)
+
+	if not user_ids:
+		return
+
+	try:
+		site_url = frappe.utils.get_url()
+		event_url = f"{site_url}/app/event/{doc.name}"
+	except Exception:
+		event_url = None
+
+	summary = _format_event_summary(doc)
+	body_lines = [f"Event updated: {summary}"]
+	if event_url:
+		body_lines.append(event_url)
+	message = "\n".join(body_lines)
+
+	url = f"{LARK_BASE_URL}/im/v1/messages?receive_id_type=user_id"
+	for uid in set(user_ids):
+		_lark_request(
+			"POST",
+			url,
+			token=token,
+			json={
+				"receive_id": uid,
+				"msg_type": "text",
+				"content": json.dumps({"text": message})
+			},
+			skip_logging=True
+		)
 
 
 def sync_event_to_lark(doc, method=None):
@@ -3158,15 +3336,22 @@ def sync_event_to_lark(doc, method=None):
 	if getattr(doc, "_sync_from_lark", False):
 		return
 
+	# Preserve IDs if they were cleared during update so we don't create duplicates
+	before = doc.get_doc_before_save()
+	existing_event_id = before.lark_event_id if before else None
+	existing_calendar_id = before.lark_calendar_id if before else None
+
 	frappe.enqueue(
 		"lark_integration.api._sync_event_record_to_lark",
 		doc_name=doc.name,
+		existing_event_id=existing_event_id,
+		existing_calendar_id=existing_calendar_id,
 		queue="long",
 		enqueue_after_commit=True
 	)
 
 
-def _sync_event_record_to_lark(doc_name):
+def _sync_event_record_to_lark(doc_name, existing_event_id=None, existing_calendar_id=None):
 	"""Background job to sync a specific Event to Lark."""
 	try:
 		doc = frappe.get_doc("Event", doc_name)
@@ -3181,20 +3366,35 @@ def _sync_event_record_to_lark(doc_name):
 	if event_data and event_data.lark_event_id:
 		doc.lark_event_id = event_data.lark_event_id
 		doc.lark_calendar_id = event_data.lark_calendar_id
+	elif existing_event_id:
+		doc.lark_event_id = existing_event_id
+		if existing_calendar_id:
+			doc.lark_calendar_id = existing_calendar_id
+		frappe.db.set_value(
+			"Event",
+			doc_name,
+			{
+				"lark_event_id": existing_event_id,
+				"lark_calendar_id": existing_calendar_id
+			},
+			update_modified=False
+		)
 
 	settings = frappe.get_single("Lark Integration Settings")
 	if not settings.calendar_sync_enabled:
 		return
 
-	token = get_lark_token()
-	if not token:
-		return
-
 	# 1. Determine the Calendar ID
 	calendar_id = None
+	calendar_owner = doc.owner
 	
 	if doc.lark_calendar:
-		calendar_id = frappe.db.get_value("Lark Calendar", doc.lark_calendar, "lark_calendar_id")
+		calendar_id, calendar_owner = frappe.db.get_value(
+			"Lark Calendar",
+			doc.lark_calendar,
+			["lark_calendar_id", "owner"],
+			as_dict=False
+		)
 	
 	if not calendar_id:
 		# Fallback to the owner's primary calendar
@@ -3203,16 +3403,18 @@ def _sync_event_record_to_lark(doc_name):
 	if not calendar_id:
 		return
 
+	# Use the calendar owner's token to avoid access_role errors
+	token = _get_lark_user_token(calendar_owner) or _get_lark_user_token(doc.owner) or get_lark_token()
+	if not token:
+		return
+
 	# Prepare payload
+	start_time, end_time = _build_event_time_payload(doc)
 	payload = {
-		"summary": doc.subject or "(No Subject)",
-		"description": doc.description or "",
-		"start_time": {
-			"timestamp": str(int(get_datetime(doc.starts_on).timestamp())),
-		},
-		"end_time": {
-			"timestamp": str(int(get_datetime(doc.ends_on or doc.starts_on).timestamp())),
-		}
+		"summary": _format_event_summary(doc),
+		"description": _build_event_description(doc),
+		"start_time": start_time,
+		"end_time": end_time
 	}
 	
 	if doc.location:
@@ -3258,6 +3460,8 @@ def _sync_event_record_to_lark(doc_name):
 		event_id = doc.lark_event_id or res.get("data", {}).get("event", {}).get("event_id")
 		if event_id:
 			sync_event_attendees(calendar_id, event_id, doc.event_participants, token)
+			if getattr(settings, "notify_event_participants", 0):
+				_notify_event_participants(doc, token)
 
 
 def delete_lark_event(doc, method=None):
@@ -3265,11 +3469,15 @@ def delete_lark_event(doc, method=None):
 	if not doc.lark_event_id or not doc.lark_calendar_id:
 		return
 
+	calendar_owner = doc.owner
+	if doc.lark_calendar:
+		calendar_owner = frappe.db.get_value("Lark Calendar", doc.lark_calendar, "owner") or calendar_owner
+
 	frappe.enqueue(
 		"lark_integration.api._delete_lark_event_job",
 		event_id=doc.lark_event_id,
 		calendar_id=doc.lark_calendar_id,
-		owner=doc.owner,
+		owner=calendar_owner,
 		queue="long",
 		enqueue_after_commit=True
 	)
@@ -3287,6 +3495,7 @@ def _delete_lark_event_job(event_id, calendar_id, owner=None):
 
 def _sync_lark_calendars_with_erp(token):
 	"""Syncs Lark Calendars to ERPNext Lark Calendar records for all users."""
+	token_cache = {}
 	users = frappe.get_all("User", filters={"lark_user_id": ("!=", "")}, fields=["name", "lark_user_id"])
 	for u in users:
 		lark_id = u.lark_user_id
@@ -3296,7 +3505,8 @@ def _sync_lark_calendars_with_erp(token):
 		
 		# Fetch calendar details
 		url = f"{LARK_BASE_URL}/calendar/v4/calendars/{lark_id}"
-		res = _lark_request("GET", url, token=token)
+		user_token = _get_user_token_cached(token_cache, u.name) or token
+		res = _lark_request("GET", url, token=user_token)
 		if res and res.get("data", {}).get("calendar"):
 			cal = res["data"]["calendar"]
 			try:
@@ -3325,6 +3535,7 @@ def pull_lark_calendar_events(publish_progress=False):
 	token = get_lark_token()
 	if not token:
 		return
+	token_cache = {}
 
 	# 0. Sync Calendar List to ERPNext to ensure correct ownership
 	try:
@@ -3368,7 +3579,7 @@ def pull_lark_calendar_events(publish_progress=False):
 	for idx, target in enumerate(sync_targets):
 		calendar_id = target["id"]
 		target_owner = target.get("owner")
-		target_token = _get_lark_user_token(target_owner) or token
+		target_token = _get_user_token_cached(token_cache, target_owner) or token
 		
 		if publish_progress:
 			prog = 10 + int((idx / active_target_count) * 80)
@@ -3545,9 +3756,9 @@ def create_lark_task_list(doc_name):
 	if doc.lark_list_guid:
 		frappe.throw("This task list is already linked to Lark.")
 
-	token = get_lark_token()
+	token = _get_lark_user_token(doc.owner) or _get_lark_user_token(frappe.session.user) or get_lark_token()
 	if not token:
-		return
+		return {"status": "error", "message": "Connect your Lark account first (OAuth)."}
 
 	payload = {
 		"name": doc.list_name
@@ -3831,7 +4042,7 @@ def _sync_task_list_from_lark_guid(guid, token):
 @frappe.whitelist()
 def fetch_lark_task_lists():
 	"""Fetch all task lists from Lark into ERPNext."""
-	token = get_lark_token()
+	token = _get_lark_user_token(frappe.session.user) or get_lark_token()
 	if not token:
 		return
 
@@ -3895,7 +4106,7 @@ def delete_lark_task_list(doc, method=None):
 	guid = doc.lark_list_guid
 	if not guid:
 		return
-	token = get_lark_token()
+	token = _get_lark_user_token(doc.owner) or get_lark_token()
 	if not token:
 		return
 	try:
@@ -3925,9 +4136,9 @@ def link_lark_task_list(doc_name, guid):
 	if not guid:
 		return {"status": "error", "msg": "GUID is required"}
 
-	token = get_lark_token()
+	token = _get_lark_user_token(frappe.session.user) or get_lark_token()
 	if not token:
-		return {"status": "error", "msg": "No Lark token"}
+		return {"status": "error", "msg": "Connect your Lark account first (OAuth)."}
 
 	# Update the ERPNext record with the GUID
 	frappe.db.set_value("Lark Task List", doc_name, "lark_list_guid", guid)
@@ -4483,28 +4694,59 @@ def _sync_event_from_lark_detail(erp_event, item, settings, token):
 	erp_event._sync_from_lark = True
 	
 	try:
+		start_info = item.get("start_time", {}) or {}
+		end_info = item.get("end_time", {}) or {}
+
+		# Determine all-day from payload when present
+		is_all_day = bool(item.get("all_day")) if "all_day" in item else bool(start_info.get("date") and end_info.get("date"))
+
 		# Times are UTC timestamps in seconds
-		lark_start = int(item["start_time"].get("timestamp", 0))
-		lark_end = int(item["end_time"].get("timestamp", 0))
+		lark_start = int(start_info.get("timestamp", 0) or 0)
+		lark_end = int(end_info.get("timestamp", 0) or 0)
 		
 		# Threshold for drift (60 seconds)
-		if erp_event.starts_on:
-			erp_start = int(get_datetime(erp_event.starts_on).timestamp())
-			if abs(lark_start - erp_start) > 60:
+		if is_all_day and start_info.get("date") and end_info.get("date"):
+			# Lark all-day end date is exclusive; map back to ERPNext inclusive end date.
+			start_date = getdate(start_info.get("date"))
+			end_date = getdate(end_info.get("date")) - timedelta(days=1)
+			if end_date < start_date:
+				end_date = start_date
+
+			start_dt = datetime.combine(start_date, dt_time.min)
+			end_dt = datetime.combine(end_date, dt_time.max.replace(microsecond=0))
+
+			if not erp_event.all_day:
+				erp_event.all_day = 1
+				changed = True
+
+			if not erp_event.starts_on or get_datetime(erp_event.starts_on) != start_dt:
+				erp_event.starts_on = start_dt
+				changed = True
+			if not erp_event.ends_on or get_datetime(erp_event.ends_on) != end_dt:
+				erp_event.ends_on = end_dt
+				changed = True
+		else:
+			if erp_event.all_day:
+				erp_event.all_day = 0
+				changed = True
+
+			if erp_event.starts_on:
+				erp_start = int(get_datetime(erp_event.starts_on).timestamp())
+				if abs(lark_start - erp_start) > 60:
+					erp_event.starts_on = get_datetime(lark_start)
+					changed = True
+			else:
 				erp_event.starts_on = get_datetime(lark_start)
 				changed = True
-		else:
-			erp_event.starts_on = get_datetime(lark_start)
-			changed = True
-		
-		if erp_event.ends_on:
-			erp_end = int(get_datetime(erp_event.ends_on).timestamp())
-			if abs(lark_end - erp_end) > 60:
+			
+			if erp_event.ends_on:
+				erp_end = int(get_datetime(erp_event.ends_on).timestamp())
+				if abs(lark_end - erp_end) > 60:
+					erp_event.ends_on = get_datetime(lark_end)
+					changed = True
+			else:
 				erp_event.ends_on = get_datetime(lark_end)
 				changed = True
-		else:
-			erp_event.ends_on = get_datetime(lark_end)
-			changed = True
 
 		if item.get("summary") and item["summary"] != erp_event.subject:
 			erp_event.subject = item["summary"]

@@ -33,6 +33,19 @@ frappe.ui.form.on("Lark Integration Settings", {
 				}
 			});
 		}, __("Integration"));
+
+		frm.add_custom_button(__("Connect Lark Account"), () => {
+			frappe.call({
+				method: "lark_integration.api.get_lark_oauth_url",
+				callback: (r) => {
+					if (r.message && r.message.status === "success") {
+						window.open(r.message.url, "_blank");
+					} else {
+						frappe.show_alert({ message: __("Failed to get OAuth URL."), indicator: "red" });
+					}
+				}
+			});
+		}, __("Integration"));
 		
 		frm.add_custom_button(__("Test Webhook Security"), () => {
 			frappe.call({

@@ -402,6 +402,13 @@
    "label": "Enable Event / Lark Calendar Sync"
   },
   {
+   "default": "0",
+   "fieldname": "notify_event_participants",
+   "fieldtype": "Check",
+   "label": "Notify Event Participants (Lark Chat)",
+   "description": "Send a Lark chat message to participant users on create/update."
+  },
+  {
    "default": "Periodic",
    "fieldname": "calendar_sync_method",
    "fieldtype": "Select",
