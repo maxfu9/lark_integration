@@ -4346,8 +4346,17 @@ def create_demo_sales_order_for_approval():
 		if user_row:
 			frappe.set_user(original_user)
 	except Exception:
+		# Fallback: set workflow state directly to trigger approval
 		frappe.log_error("Demo Sales Order workflow action failed", frappe.get_traceback())
-		return {"status": "error", "message": "Sales Order created but workflow action failed.", "name": doc.name}
+		try:
+			doc = frappe.get_doc("Sales Order", doc.name)
+			doc.workflow_state = "Pending Approval"
+			doc.save(ignore_permissions=True)
+			frappe.db.commit()
+			return {"status": "success", "name": doc.name, "workflow_fallback": True}
+		except Exception:
+			frappe.log_error("Demo Sales Order workflow fallback failed", frappe.get_traceback())
+			return {"status": "error", "message": "Sales Order created but workflow action failed.", "name": doc.name}
 
 	return {"status": "success", "name": doc.name}
 
