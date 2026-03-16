@@ -4045,6 +4045,125 @@ def trigger_lark_approval_globally(doc, method=None):
 	)
 
 
+@frappe.whitelist()
+def setup_sales_order_lark_workflow(approval_code=None, lark_fields_json=None):
+	"""
+	Create or update a Sales Order workflow suitable for Lark approval.
+	If approval_code and lark_fields_json are provided, also create the Lark Approval Mapping.
+	"""
+	workflow_name = "Sales Order Lark Approval"
+	doctype = "Sales Order"
+
+	# Prevent conflicting active workflows
+	active_workflows = frappe.get_all(
+		"Workflow",
+		filters={"document_type": doctype, "is_active": 1},
+		fields=["name"]
+	)
+	if active_workflows and active_workflows[0].name != workflow_name:
+		return {
+			"status": "error",
+			"message": f"Active workflow already exists for {doctype}: {active_workflows[0].name}. Deactivate it to use {workflow_name}."
+		}
+
+	# Create or update workflow
+	if frappe.db.exists("Workflow", workflow_name):
+		workflow = frappe.get_doc("Workflow", workflow_name)
+	else:
+		workflow = frappe.new_doc("Workflow")
+		workflow.name = workflow_name
+
+	workflow.update({
+		"document_type": doctype,
+		"workflow_state_field": "workflow_state",
+		"is_active": 1
+	})
+
+	workflow.states = []
+	workflow.transitions = []
+
+	# States
+	workflow.append("states", {"state": "Draft", "doc_status": 0, "allow_edit": "Sales User"})
+	workflow.append("states", {"state": "Pending Approval", "doc_status": 0, "allow_edit": "Sales Manager"})
+	workflow.append("states", {"state": "Approved", "doc_status": 1, "allow_edit": "Accounts Manager"})
+	workflow.append("states", {"state": "Rejected", "doc_status": 0, "allow_edit": "Sales Manager"})
+
+	# Transitions
+	workflow.append("transitions", {
+		"state": "Draft",
+		"action": "Submit for Approval",
+		"next_state": "Pending Approval",
+		"allowed": "Sales User"
+	})
+	workflow.append("transitions", {
+		"state": "Draft",
+		"action": "Submit for Approval",
+		"next_state": "Pending Approval",
+		"allowed": "Sales Manager"
+	})
+	workflow.append("transitions", {
+		"state": "Pending Approval",
+		"action": "Approve",
+		"next_state": "Approved",
+		"allowed": "Accounts Manager"
+	})
+	workflow.append("transitions", {
+		"state": "Pending Approval",
+		"action": "Reject",
+		"next_state": "Rejected",
+		"allowed": "Sales Manager"
+	})
+	workflow.append("transitions", {
+		"state": "Pending Approval",
+		"action": "Reject",
+		"next_state": "Rejected",
+		"allowed": "Accounts Manager"
+	})
+
+	workflow.save(ignore_permissions=True)
+	frappe.db.commit()
+
+	# Optional: create Lark Approval Mapping if details provided
+	if approval_code and lark_fields_json:
+		try:
+			import json
+			lark_fields = json.loads(lark_fields_json) if isinstance(lark_fields_json, str) else lark_fields_json
+		except Exception:
+			return {"status": "error", "message": "Invalid lark_fields_json. Must be JSON list of {label, erpnext_field, lark_field_id}."}
+
+		if not lark_fields:
+			return {"status": "error", "message": "lark_fields_json is empty."}
+
+		mapping_name = doctype
+		if frappe.db.exists("Lark Approval Mapping", mapping_name):
+			mapping = frappe.get_doc("Lark Approval Mapping", mapping_name)
+		else:
+			mapping = frappe.new_doc("Lark Approval Mapping")
+			mapping.document_type = doctype
+
+		mapping.update({
+			"enabled": 1,
+			"trigger_workflow_state": "Pending Approval",
+			"approve_action": "Approve",
+			"reject_action": "Reject",
+			"approval_code": approval_code,
+			"signature_required": 0
+		})
+
+		mapping.field_mappings = []
+		for f in lark_fields:
+			mapping.append("field_mappings", {
+				"label": f.get("label"),
+				"erpnext_field": f.get("erpnext_field"),
+				"lark_field_id": f.get("lark_field_id")
+			})
+
+		mapping.save(ignore_permissions=True)
+		frappe.db.commit()
+
+	return {"status": "success", "workflow": workflow_name, "mapping_created": bool(approval_code and lark_fields_json)}
+
+
 def _process_lark_approval_trigger(doctype, docname):
 	"""Actual worker to push approval request to Lark."""
 	# Safety check for migration
