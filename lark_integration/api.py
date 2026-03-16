@@ -1366,7 +1366,7 @@ def send_lark_notification_job(message, title, target_chats, is_interactive=Fals
 	)
 
 
-def process_lark_notification_rule_job(notification_name, doc_doctype, doc_name, event):
+def process_lark_notification_rule_job(notification_name, doc_doctype, doc_name, event=None):
 	"""Background worker to process a single notification rule."""
 	try:
 		notification = frappe.get_doc("Lark Notification", notification_name)
@@ -1374,7 +1374,7 @@ def process_lark_notification_rule_job(notification_name, doc_doctype, doc_name,
 			return
 
 		# Ensure event matches (defensive)
-		if notification.event != event:
+		if event and notification.event != event:
 			return
 
 		doc = frappe.get_doc(doc_doctype, doc_name)
