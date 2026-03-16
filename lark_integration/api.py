@@ -913,6 +913,31 @@ def get_lark_oauth_status():
 	return {"status": "success", "connected": bool(token)}
 
 
+@frappe.whitelist()
+def fetch_lark_chats():
+	"""Fetch chats visible to the current user/bot to help pick chat_id."""
+	token = _get_lark_user_token(frappe.session.user) or get_lark_token()
+	if not token:
+		return {"status": "error", "message": "No Lark token. Connect your account or configure app token."}
+
+	chats = []
+	page_token = None
+	while True:
+		params = {"page_size": 100}
+		if page_token:
+			params["page_token"] = page_token
+		res = _lark_request("GET", f"{LARK_BASE_URL}/im/v1/chats", token=token, params=params, skip_logging=True)
+		if not res or "data" not in res:
+			break
+		data = res["data"]
+		chats.extend(data.get("items", []) or [])
+		page_token = data.get("page_token")
+		if not page_token:
+			break
+
+	return {"status": "success", "items": chats}
+
+
 @frappe.whitelist(allow_guest=True)
 def lark_oauth_callback(code=None, state=None):
 	"""OAuth callback to store user access/refresh token."""
