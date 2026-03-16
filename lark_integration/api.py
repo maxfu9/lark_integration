@@ -1023,7 +1023,8 @@ def process_lark_notifications(doc, event, method=None):
 
 		notifications = frappe.get_all("Lark Notification", 
 			filters=filters,
-			fields=["name", "subject", "message", "condition", "changed_field", "event", "attach_print", "print_format", "is_interactive"]
+			fields=["name", "subject", "message", "condition", "changed_field", "event", "attach_print", "print_format", "is_interactive"],
+			ignore_permissions=True
 		)
 		frappe.cache().set_value(cache_key, notifications, expires_in_sec=3600)
 	
@@ -1072,7 +1073,8 @@ def process_lark_notifications(doc, event, method=None):
 		recipients = frappe.get_all(
 			"Lark Notification Recipient",
 			filters={"parent": n.name},
-			fields=["erpnext_role", "lark_chat_id"]
+			fields=["erpnext_role", "lark_chat_id"],
+			ignore_permissions=True
 		)
 		
 		target_chats = set()
@@ -1103,7 +1105,12 @@ def process_lark_notifications(doc, event, method=None):
 		# 6. Send
 		actions = []
 		if n.is_interactive:
-			actions = frappe.get_all("Lark Notification Action", filters={"parent": n.name}, fields=["label", "action_type", "action_value", "btn_style"])
+			actions = frappe.get_all(
+				"Lark Notification Action",
+				filters={"parent": n.name},
+				fields=["label", "action_type", "action_value", "btn_style"],
+				ignore_permissions=True
+			)
 
 		send_lark_notification(
 			message, 
