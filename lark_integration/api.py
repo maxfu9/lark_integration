@@ -2363,7 +2363,15 @@ def enqueue_journal_entry_sync(doc, handler=None):
 # --- HOOKS WRAPPERS ---
 def handle_universal_update(doc, handler=None):
 	"""Save hook for non-submittable docs."""
-	if not getattr(doc.meta, "is_submittable", 0):
+	if getattr(doc.meta, "is_submittable", 0):
+		# Fallback: if on_submit didn't fire, handle submit notifications here
+		if doc.docstatus == 1 and not getattr(frappe.flags, "lark_submit_notif_fired", False):
+			try:
+				process_lark_notifications(doc, "Submit")
+			except Exception:
+				frappe.log_error("Lark Notification Submit Trigger Failed", frappe.get_traceback())
+			_enqueue_sync(doc)
+	else:
 		# Trigger Lark Notifications for Save on non-submittable docs
 		try:
 			process_lark_notifications(doc, "Save")
@@ -2375,6 +2383,7 @@ def handle_universal_update(doc, handler=None):
 def enqueue_universal_sync(doc, handler=None):
 	"""Submit/Update hook for submittable docs."""
 	if doc.docstatus == 1:
+		frappe.flags.lark_submit_notif_fired = True
 		# Trigger Lark Notifications for Submit
 		try:
 			process_lark_notifications(doc, "Submit")
