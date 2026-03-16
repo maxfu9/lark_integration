@@ -197,14 +197,17 @@ def clear_lark_cache(doc=None, method=None):
 		frappe.cache().delete_value("lark_integration:approval_mappings")
 	elif doc and doc.doctype == "Lark Notification":
 		frappe.cache().delete_keys("lark_notification:*")
+		frappe.cache().delete_keys("lark_notifications:*")
 	elif doc and doc.doctype == "Lark Integration Settings":
 		frappe.cache().delete_keys("lark_integration:*")
 		frappe.cache().delete_keys("lark_notification:*")
+		frappe.cache().delete_keys("lark_notifications:*")
 	else:
 		# Global flush (fallback or explicit call)
 		frappe.cache().delete_keys("lark_sync_mapping:*")
 		frappe.cache().delete_keys("lark_integration:*")
 		frappe.cache().delete_keys("lark_notification:*")
+		frappe.cache().delete_keys("lark_notifications:*")
 	
 	return True
 
@@ -1079,6 +1082,10 @@ def process_lark_notifications(doc, event, method=None):
 				target_chats.add(chat_id)
 
 		if not target_chats:
+			frappe.log_error(
+				title="Lark Notification Skipped (No Recipients)",
+				message=f"Notification: {n.name}\nDoc: {doc.doctype} {doc.name}"
+			)
 			continue
 
 		# 5. Handle PDF Attachment
@@ -2334,12 +2341,22 @@ def enqueue_journal_entry_sync(doc, handler=None):
 def handle_universal_update(doc, handler=None):
 	"""Save hook for non-submittable docs."""
 	if not getattr(doc.meta, "is_submittable", 0):
+		# Trigger Lark Notifications for Save on non-submittable docs
+		try:
+			process_lark_notifications(doc, "Save")
+		except Exception:
+			frappe.log_error("Lark Notification Save Trigger Failed", frappe.get_traceback())
 		_enqueue_sync(doc)
 
 
 def enqueue_universal_sync(doc, handler=None):
 	"""Submit/Update hook for submittable docs."""
 	if doc.docstatus == 1:
+		# Trigger Lark Notifications for Submit
+		try:
+			process_lark_notifications(doc, "Submit")
+		except Exception:
+			frappe.log_error("Lark Notification Submit Trigger Failed", frappe.get_traceback())
 		_enqueue_sync(doc)
 
 
