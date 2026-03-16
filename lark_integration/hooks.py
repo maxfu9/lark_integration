@@ -16,7 +16,7 @@ doc_events = {
             "lark_integration.api.trigger_lark_approval_globally"
         ],
         "on_cancel": "lark_integration.api.handle_cancel",
-        "on_update_after_submit": "lark_integration.api.enqueue_universal_sync"
+        "on_update_after_submit": "lark_integration.api.handle_update_after_submit"
     },
     "Journal Entry": {
         "on_submit": "lark_integration.api.enqueue_journal_entry_sync",

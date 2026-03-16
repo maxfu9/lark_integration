@@ -2385,31 +2385,41 @@ def enqueue_journal_entry_sync(doc, handler=None):
 def handle_universal_update(doc, handler=None):
 	"""Save hook for non-submittable docs."""
 	if getattr(doc.meta, "is_submittable", 0):
-		# Fallback: if on_submit didn't fire, handle submit notifications here
-		if doc.docstatus == 1 and not getattr(frappe.flags, "lark_submit_notif_fired", False):
+		# Only draft saves should trigger Save for submittable docs
+		if doc.docstatus == 0:
 			try:
-				process_lark_notifications(doc, "Submit")
+				process_lark_notifications(doc, "Save")
 			except Exception:
-				frappe.log_error("Lark Notification Submit Trigger Failed", frappe.get_traceback())
+				frappe.log_error("Lark Notification Save Trigger Failed", frappe.get_traceback())
 			_enqueue_sync(doc)
-	else:
-		# Trigger Lark Notifications for Save on non-submittable docs
-		try:
-			process_lark_notifications(doc, "Save")
-		except Exception:
-			frappe.log_error("Lark Notification Save Trigger Failed", frappe.get_traceback())
-		_enqueue_sync(doc)
+		return
+
+	# Non-submittable docs: regular Save
+	try:
+		process_lark_notifications(doc, "Save")
+	except Exception:
+		frappe.log_error("Lark Notification Save Trigger Failed", frappe.get_traceback())
+	_enqueue_sync(doc)
 
 
 def enqueue_universal_sync(doc, handler=None):
 	"""Submit/Update hook for submittable docs."""
 	if doc.docstatus == 1:
-		frappe.flags.lark_submit_notif_fired = True
 		# Trigger Lark Notifications for Submit
 		try:
 			process_lark_notifications(doc, "Submit")
 		except Exception:
 			frappe.log_error("Lark Notification Submit Trigger Failed", frappe.get_traceback())
+		_enqueue_sync(doc)
+
+
+def handle_update_after_submit(doc, handler=None):
+	"""Update-after-submit hook for submittable docs."""
+	if doc.docstatus == 1:
+		try:
+			process_lark_notifications(doc, "Save")
+		except Exception:
+			frappe.log_error("Lark Notification Save Trigger Failed", frappe.get_traceback())
 		_enqueue_sync(doc)
 
 
