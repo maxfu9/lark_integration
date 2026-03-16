@@ -991,13 +991,41 @@ def fetch_lark_approval_fields(approval_code):
 	# Best-effort parse of form fields from multiple possible structures
 	fields = []
 	form = approval.get("form") or approval.get("form_content") or approval.get("form_json")
+	if isinstance(form, str):
+		try:
+			import json
+			form = json.loads(form)
+		except Exception:
+			form = None
+
 	if isinstance(form, dict):
 		# Some APIs return {fields: [...]}
-		form_fields = form.get("fields") or form.get("field_list") or []
+		form_fields = form.get("fields") or form.get("field_list") or form.get("form") or []
 		if isinstance(form_fields, list):
 			fields = form_fields
 	elif isinstance(form, list):
 		fields = form
+
+	# Fallback: check i18n resources if present
+	if not fields:
+		i18n = approval.get("i18n_resources") or approval.get("i18n_resource") or []
+		for item in i18n:
+			content = item.get("content") or {}
+			form_obj = content.get("form") or content.get("form_content") or content.get("form_json")
+			if isinstance(form_obj, str):
+				try:
+					import json
+					form_obj = json.loads(form_obj)
+				except Exception:
+					form_obj = None
+			if isinstance(form_obj, dict):
+				form_fields = form_obj.get("fields") or form_obj.get("field_list") or form_obj.get("form") or []
+				if isinstance(form_fields, list) and form_fields:
+					fields = form_fields
+					break
+			elif isinstance(form_obj, list) and form_obj:
+				fields = form_obj
+				break
 
 	return {"status": "success", "approval": approval, "fields": fields}
 
