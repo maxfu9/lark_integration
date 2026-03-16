@@ -1071,11 +1071,12 @@ def process_lark_notifications(doc, event, method=None):
 
 		# 3. Render Templates with Expanded Context
 		try:
+			format_fn = getattr(frappe, "format_value", None) or getattr(frappe.utils, "format_value", None)
 			context = {
 				"doc": doc,
 				"frappe": frappe,
 				"get_url": frappe.utils.get_url,
-				"format": frappe.utils.format,
+				"format": format_fn,
 				"get_datetime": frappe.utils.get_datetime,
 				"today": frappe.utils.today
 			}
