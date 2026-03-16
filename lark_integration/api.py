@@ -2539,11 +2539,6 @@ def _upload_single_file_to_drive(file_name: str):
 		frappe.log_error(title=f"Lark Drive file attach upload failed: {file_name}", message=frappe.get_traceback())
 
 
-def enqueue_universal_sync(doc, handler=None):
-	if doc.docstatus == 1:
-		frappe.enqueue("lark_integration.api.sync_universal", doctype=doc.doctype, doc_name=doc.name, queue="long", enqueue_after_commit=True)
-
-
 @lark_background_worker("Universal Document Sync")
 def sync_universal(doctype, doc_name, **kwargs):
 	try:
