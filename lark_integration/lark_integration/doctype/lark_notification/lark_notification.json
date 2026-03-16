@@ -7,29 +7,25 @@
  "field_order": [
   "enabled",
   "document_type",
-  "channel",
-  "sb_trigger",
   "event",
+  "sb_content",
+  "subject",
+  "message",
+  "sb_recipients",
+  "recipients",
+  "sb_trigger",
   "changed_field",
-  "cb_target",
   "method",
   "date_changed",
   "days_before_after",
   "sb_conditions",
   "condition",
-  "cb_attach",
   "attach_print",
   "print_format",
-  "sb_interactive",
   "is_interactive",
   "actions",
-  "sb_content",
-  "subject",
-  "message",
-  "cb_help",
-  "jinja_help",
-  "sb_recipients",
-  "recipients"
+  "sb_template_help",
+  "jinja_help"
  ],
  "fields": [
   {
@@ -52,12 +48,14 @@
    "fieldtype": "Select",
    "label": "Channel",
    "options": "Lark Messenger",
-   "read_only": 1
+   "read_only": 1,
+   "hidden": 1
   },
   {
    "fieldname": "sb_trigger",
    "fieldtype": "Section Break",
-   "label": "Trigger Settings"
+   "label": "Advanced Triggers",
+   "collapsible": 1
   },
   {
    "fieldname": "event",
@@ -73,10 +71,6 @@
    "fieldtype": "Select",
    "label": "Changed Field",
    "description": "Trigger when this specific field is modified (e.g., 'status')."
-  },
-  {
-   "fieldname": "cb_target",
-   "fieldtype": "Column Break"
   },
   {
    "depends_on": "eval:doc.event == 'Method'",
@@ -102,7 +96,8 @@
   {
    "fieldname": "sb_conditions",
    "fieldtype": "Section Break",
-   "label": "Conditions & Attachments"
+   "label": "Advanced Options",
+   "collapsible": 1
   },
   {
    "fieldname": "condition",
@@ -110,10 +105,6 @@
    "label": "Condition",
    "options": "Python",
    "description": "Optional: Python condition evaluated before sending (e.g., doc.total > 1000)."
-  },
-  {
-   "fieldname": "cb_attach",
-   "fieldtype": "Column Break"
   },
   {
    "fieldname": "attach_print",
@@ -126,11 +117,6 @@
    "fieldname": "print_format",
    "fieldtype": "Select",
    "label": "Print Format"
-  },
-  {
-   "fieldname": "sb_interactive",
-   "fieldtype": "Section Break",
-   "label": "Interactive Actions"
   },
   {
    "default": "0",
@@ -166,14 +152,16 @@
    "reqd": 1
   },
   {
-   "fieldname": "cb_help",
-   "fieldtype": "Column Break"
+   "collapsible": 1,
+   "fieldname": "sb_template_help",
+   "fieldtype": "Section Break",
+   "label": "Template Help"
   },
   {
    "fieldname": "jinja_help",
    "fieldtype": "HTML",
    "label": "Templating Guide",
-   "options": "<h4>Jinja Guide</h4><p>Use these variables in Subject or Message:</p><ul><li><code>doc</code>: The current record data</li><li><code>frappe.format(val, type)</code>: Format values</li><li><code>frappe.utils.today()</code>: Current date</li><li><code>get_url()</code>: Link to the record</li></ul>"
+   "options": "<h4>Jinja Guide</h4><p>Use these variables in Subject or Message:</p><ul><li><code>doc</code>: The current record data</li><li><code>frappe.format_value(val, type)</code>: Format values</li><li><code>frappe.utils.today()</code>: Current date</li><li><code>get_url()</code>: Link to the record</li></ul>"
   },
   {
    "fieldname": "sb_recipients",
