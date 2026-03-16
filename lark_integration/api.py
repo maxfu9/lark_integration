@@ -4085,7 +4085,7 @@ def setup_sales_order_lark_workflow(approval_code=None, lark_fields_json=None):
 		workflow = frappe.get_doc("Workflow", workflow_name)
 	else:
 		workflow = frappe.new_doc("Workflow")
-		workflow.name = workflow_name
+		workflow.workflow_name = workflow_name
 
 	workflow.update({
 		"document_type": doctype,
