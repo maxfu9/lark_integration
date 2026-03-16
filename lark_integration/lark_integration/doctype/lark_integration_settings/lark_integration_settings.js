@@ -108,6 +108,50 @@ frappe.ui.form.on("Lark Integration Settings", {
 				}
 			});
 		}, __("Integration"));
+
+		frm.add_custom_button(__("Fetch Approval Fields"), () => {
+			frappe.prompt(
+				{
+					fieldtype: "Data",
+					fieldname: "approval_code",
+					label: __("Approval Code"),
+					reqd: 1
+				},
+				(values) => {
+					frappe.call({
+						method: "lark_integration.api.fetch_lark_approval_fields",
+						freeze: true,
+						freeze_message: __("Fetching approval fields..."),
+						args: { approval_code: values.approval_code },
+						callback: (r) => {
+							if (r.message && r.message.status === "success") {
+								const fields = r.message.fields || [];
+								if (!fields.length) {
+									frappe.msgprint(__("No fields found. Check the approval definition in Lark."));
+									return;
+								}
+								const rows = fields
+									.map(i => `<tr><td>${i.name || i.label || ""}</td><td><code>${i.id || i.field_id || ""}</code></td></tr>`)
+									.join("");
+								const html = `
+									<div style="max-height:300px; overflow:auto;">
+										<table class="table table-bordered">
+											<thead><tr><th>Field</th><th>Field ID</th></tr></thead>
+											<tbody>${rows}</tbody>
+										</table>
+									</div>
+								`;
+								frappe.msgprint({ title: __("Approval Fields"), message: html });
+							} else {
+								frappe.msgprint(__("Failed to fetch approval fields. Check approval code and permissions."));
+							}
+						}
+					});
+				},
+				__("Fetch Approval Fields"),
+				__("Fetch")
+			);
+		}, __("Integration"));
 		
 		frm.add_custom_button(__("Test Webhook Security"), () => {
 			frappe.call({

@@ -966,6 +966,42 @@ def fetch_lark_approvals():
 	return {"status": "success", "items": approvals}
 
 
+@frappe.whitelist()
+def fetch_lark_approval_fields(approval_code):
+	"""Fetch fields for a specific approval definition to assist mapping."""
+	if not approval_code:
+		return {"status": "error", "message": "approval_code is required"}
+
+	token = get_lark_token()
+	if not token:
+		return {"status": "error", "message": "No Lark tenant token. Configure app credentials first."}
+
+	res = _lark_request(
+		"GET",
+		f"{LARK_BASE_URL}/approval/v4/approvals/{approval_code}",
+		token=token,
+		skip_logging=True
+	)
+	if not res or "data" not in res:
+		return {"status": "error", "message": "Failed to fetch approval detail."}
+
+	data = res.get("data") or {}
+	approval = data.get("approval") or data.get("approval_detail") or data
+
+	# Best-effort parse of form fields from multiple possible structures
+	fields = []
+	form = approval.get("form") or approval.get("form_content") or approval.get("form_json")
+	if isinstance(form, dict):
+		# Some APIs return {fields: [...]}
+		form_fields = form.get("fields") or form.get("field_list") or []
+		if isinstance(form_fields, list):
+			fields = form_fields
+	elif isinstance(form, list):
+		fields = form
+
+	return {"status": "success", "approval": approval, "fields": fields}
+
+
 @frappe.whitelist(allow_guest=True)
 def lark_oauth_callback(code=None, state=None):
 	"""OAuth callback to store user access/refresh token."""
