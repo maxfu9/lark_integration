@@ -5129,6 +5129,7 @@ def handle_interactive_card():
 	except Exception:
 		return {"toast": {"type": "info", "content": "Action processed, but card update failed"}}
 
+@frappe.whitelist(allow_guest=True)
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""
 	config = _get_config()
