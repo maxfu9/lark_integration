@@ -5153,9 +5153,9 @@ def lark_webhook():
 		return {"challenge": data.get("challenge")}
 
 	# 2. Security: Verify Signature
-	signature = frappe.get_header("X-Lark-Signature")
-	timestamp = frappe.get_header("X-Lark-Request-Timestamp")
-	nonce = frappe.get_header("X-Lark-Request-Nonce")
+	signature = frappe.get_request_header("X-Lark-Signature")
+	timestamp = frappe.get_request_header("X-Lark-Request-Timestamp")
+	nonce = frappe.get_request_header("X-Lark-Request-Nonce")
 	
 	# In encrypted mode, the signature check should be against the RAW original (encrypted) body
 	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], frappe.request.get_data(), signature, timestamp, nonce):
