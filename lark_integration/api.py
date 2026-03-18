@@ -5152,7 +5152,8 @@ def lark_webhook():
 
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
-		return {"challenge": data.get("challenge")}
+		frappe.response.update({"challenge": data.get("challenge")})
+		return
 
 	# 2. Security: Verify Signature
 	signature = frappe.get_request_header("X-Lark-Signature")
