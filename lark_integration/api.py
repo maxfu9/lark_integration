@@ -8,11 +8,12 @@ import hmac
 import random
 from collections.abc import Iterable
 from datetime import datetime, time as dt_time, timedelta
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import frappe
 import requests
-from frappe.utils import fmt_money, get_datetime
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from frappe.utils import fmt_money, get_datetime, get_url
 from frappe.utils.pdf import get_pdf
 
 
@@ -5133,20 +5134,30 @@ def lark_webhook():
 	config = _get_config()
 	raw_body = frappe.request.get_data()
 	data = json.loads(raw_body) if raw_body else {}
-	
-	if not data:
-		return {"status": "error", "message": "No data"}
-	
+	# 0. Decrypt if encrypted
+	if data.get("encrypt"):
+		if not config.get("encrypt_key"):
+			frappe.log_error("Lark Webhook Error", "Encrypted payload received but no Encryption Key configured.")
+			return {"status": "error", "message": "Encryption Key missing"}
+		
+		try:
+			raw_body = _decrypt_lark_payload(config["encrypt_key"], data["encrypt"])
+			data = json.loads(raw_body)
+		except Exception:
+			frappe.log_error("Lark Webhook Decryption Failed", frappe.get_traceback())
+			return {"status": "error", "message": "Decryption failed"}
+
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
 		return {"challenge": data.get("challenge")}
-		
+
 	# 2. Security: Verify Signature
 	signature = frappe.get_header("X-Lark-Signature")
 	timestamp = frappe.get_header("X-Lark-Request-Timestamp")
 	nonce = frappe.get_header("X-Lark-Request-Nonce")
 	
-	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], raw_body, signature, timestamp, nonce):
+	# In encrypted mode, the signature check should be against the RAW original (encrypted) body
+	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], frappe.request.get_data(), signature, timestamp, nonce):
 		frappe.log_error("Lark Webhook Security Error", "Invalid signature received from Lark.")
 		return {"status": "error", "message": "Security verification failed"}
 	
@@ -5162,6 +5173,29 @@ def lark_webhook():
 		enqueue_after_commit=True
 	)
 	return {"status": "success", "message": "Event enqueued"}
+
+def _decrypt_lark_payload(encrypt_key: str, payload_base64: str) -> str:
+	"""
+	Decrypts a Lark Webhook payload using the Encryption Key.
+	Logic: Hash key (SHA256) -> AES-256-CBC -> Strip PKCS7 padding.
+	"""
+	# 1. Prepare key (hashing to 32 bytes)
+	key = hashlib.sha256(encrypt_key.encode("utf-8")).digest()
+	
+	# 2. Decode payload
+	decode_data = base64.b64decode(payload_base64)
+	iv = decode_data[:16]
+	cipher_text = decode_data[16:]
+	
+	# 3. Decrypt AES-256-CBC
+	cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
+	decryptor = cipher.decryptor()
+	plaintext_padded = decryptor.update(cipher_text) + decryptor.finalize()
+	
+	# 4. Remove PKCS7 padding
+	padding_len = plaintext_padded[-1]
+	return plaintext_padded[:-padding_len].decode("utf-8")
+
 
 
 @lark_background_worker("Lark Webhook Handler")
