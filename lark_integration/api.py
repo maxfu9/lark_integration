@@ -4178,18 +4178,45 @@ def sync_lark_user_ids():
 			
 		items = res["data"]["items"]
 		for item in items:
-			lark_email = (item.get("email") or "").lower()
+			lark_email = (item.get("email") or "").strip().lower()
+			lark_mobile = (item.get("mobile") or "").strip()
 			lark_user_id = item.get("user_id")
 			
-			if lark_email and lark_user_id:
-				# Find ERPNext users with this email (case-insensitive search)
-				erp_users = frappe.db.get_all("User", filters={"email": ["like", lark_email]}, fields=["name", "lark_user_id"])
-				for u in erp_users:
-					if u.lark_user_id == lark_user_id:
-						already_synced += 1
-					else:
-						frappe.db.set_value("User", u.name, "lark_user_id", lark_user_id)
-						matched_count += 1
+			if not lark_user_id:
+				continue
+
+			# Strategy 1: Match by Email
+			erp_user = None
+			if lark_email:
+				erp_user = frappe.db.get_value("User", {"email": lark_email}, ["name", "lark_user_id"], as_dict=True)
+			
+			# Strategy 2: Match by Mobile Number (Fallback)
+			if not erp_user and lark_mobile:
+				# Try different mobile formats (with and without +)
+				mobile_variants = [lark_mobile]
+				if lark_mobile.startswith("+"):
+					mobile_variants.append(lark_mobile[1:])
+				else:
+					mobile_variants.append(f"+{lark_mobile}")
+				
+				for m in mobile_variants:
+					erp_user = frappe.db.get_value("User", {"mobile_no": ["like", f"%{m}%"]}, ["name", "lark_user_id"], as_dict=True)
+					if erp_user:
+						break
+
+			if erp_user:
+				if erp_user.lark_user_id == lark_user_id:
+					already_synced += 1
+				else:
+					frappe.db.set_value("User", erp_user.name, "lark_user_id", lark_user_id)
+					matched_count += 1
+			else:
+				# Log the mismatch for diagnostic purposes (only if verbosity is high)
+				if frappe.conf.get("lark_log_verbosity") == "all":
+					frappe.log_error(
+						title="Lark User Sync Mismatch",
+						message=f"Could not find matching ERPNext User for Lark account:\nEmail: {lark_email}\nMobile: {lark_mobile}\nLark ID: {lark_user_id}"
+					)
 		
 		page_token = res["data"].get("page_token")
 		if not page_token:
