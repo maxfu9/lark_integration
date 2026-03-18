@@ -5144,10 +5144,10 @@ def lark_webhook():
 		try:
 			raw_body_decrypted = _decrypt_lark_payload(config["encrypt_key"], data["encrypt"])
 			data = json.loads(raw_body_decrypted)
-			if frappe.conf.get("lark_log_verbosity") == "all":
-				frappe.log_error("Lark Webhook Decrypted Data", f"Decrypted: {raw_body_decrypted}")
+			# LOGGING FOR DEBUGGING
+			frappe.log_error("Lark Webhook Decrypter", f"Decrypted: {raw_body_decrypted}")
 		except Exception:
-			frappe.log_error("Lark Webhook Decryption Failed", f"Key: {config.get('encrypt_key')}\nPayload: {data.get('encrypt')}\n\n{frappe.get_traceback()}")
+			frappe.log_error("Lark Webhook Decrypter Error", f"Key: {config.get('encrypt_key')}\nPayload: {data.get('encrypt')}\n\n{frappe.get_traceback()}")
 			return {"status": "error", "message": "Decryption failed"}
 
 	# 1. URL Verification
