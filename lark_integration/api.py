@@ -36,6 +36,13 @@ def _verify_lark_signature(key, body_bytes, signature, timestamp, nonce):
 	# 2. Compute local signature
 	local_sig = hashlib.sha256(target).hexdigest()
 	
+	# DIAGNOSTIC: Log signature comparison on mismatch
+	if local_sig != signature:
+		frappe.log_error(
+			"Lark Signature Mismatch", 
+			f"Target string: {target.decode('utf-8', 'ignore')}\nCalculated: {local_sig}\nReceived: {signature}"
+		)
+	
 	# 3. Secure comparison
 	return hmac.compare_digest(local_sig, signature)
 
