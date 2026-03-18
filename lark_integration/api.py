@@ -5133,9 +5133,9 @@ def handle_interactive_card():
 @frappe.whitelist(allow_guest=True)
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""
+	raw_body = frappe.request.get_data()
 	frappe.log_error("Lark Webhook Entry", "Request reached the Python function")
 	config = _get_config()
-	raw_body = frappe.request.get_data()
 	data = json.loads(raw_body) if raw_body else {}
 	# 0. Decrypt if encrypted
 	if data.get("encrypt"):
