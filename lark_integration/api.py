@@ -12,6 +12,7 @@ from urllib.parse import quote, urlparse
 
 import frappe
 import requests
+from werkzeug.wrappers import Response
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from frappe.utils import fmt_money, get_datetime, get_url
 from frappe.utils.pdf import get_pdf
@@ -5152,8 +5153,12 @@ def lark_webhook():
 
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
-		frappe.response.update({"challenge": data.get("challenge")})
-		return
+		# Lark requires the challenge to be at the ROOT of the JSON response
+		# Returning a Response object bypasses Frappe's default {'message': ...} wrapper
+		return Response(
+			json.dumps({"challenge": data.get("challenge")}),
+			mimetype="application/json"
+		)
 
 	# 2. Security: Verify Signature
 	signature = frappe.get_request_header("X-Lark-Signature")
