@@ -5,6 +5,7 @@ def after_install():
     pass
 
 def after_migrate():
+    create_custom_fields_if_missing()
     from lark_integration.api import warmup_lark_cache
     warmup_lark_cache()
 
