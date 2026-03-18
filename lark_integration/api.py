@@ -5137,6 +5137,7 @@ def handle_interactive_card():
 @frappe.whitelist(allow_guest=True)
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""
+	frappe.log_error("Lark Webhook Entry", "Absolute first line of function reached")
 	raw_body = frappe.request.get_data()
 	frappe.log_error("Lark Webhook Raw", f"Headers: {dict(frappe.request.headers)}\nPayload: {raw_body.decode('utf-8', 'ignore')[:1000]}")
 	config = _get_config()
