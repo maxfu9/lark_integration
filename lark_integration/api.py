@@ -301,8 +301,6 @@ def _get_sync_mapping(doctype: str):
 				"sync_attachments",
 				"attachment_sync_mode",
 				"sync_child_table",
-				"child_table_field",
-				"child_table_doctype",
 				"enable_item_summary",
 				"summary_child_table",
 				"summary_row_template",
@@ -318,8 +316,6 @@ def _get_sync_mapping(doctype: str):
 			mapping["sync_attachments"] = bool(row.sync_attachments)
 			mapping["attachment_sync_mode"] = row.attachment_sync_mode or "Both"
 			mapping["sync_child_table"] = bool(row.sync_child_table)
-			mapping["child_table_field"] = row.child_table_field
-			mapping["child_table_doctype"] = row.child_table_doctype
 			mapping["enable_item_summary"] = bool(row.enable_item_summary)
 			mapping["summary_child_table"] = row.summary_child_table
 			mapping["summary_row_template"] = row.summary_row_template
