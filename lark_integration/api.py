@@ -5160,8 +5160,9 @@ def lark_webhook():
 	timestamp = frappe.get_request_header("X-Lark-Request-Timestamp")
 	nonce = frappe.get_request_header("X-Lark-Request-Nonce")
 	
-	# In encrypted mode, the signature check should be against the RAW original (encrypted) body
-	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], raw_body, signature, timestamp, nonce):
+	# Lark signatures are always verified using the Verification Token (NOT the encryption key)
+	# The signature is calculated against the RAW original (possibly encrypted) request body.
+	if config.get("verification_token") and not _verify_lark_signature(config["verification_token"], raw_body, signature, timestamp, nonce):
 		frappe.log_error("Lark Webhook Security Error", "Invalid signature received from Lark.")
 		return {"status": "error", "message": "Security verification failed"}
 	
