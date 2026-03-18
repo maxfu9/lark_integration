@@ -5223,10 +5223,10 @@ def _handle_lark_webhook_event(data):
 	frappe.log_error("Lark Webhook Event", f"Type: {event_type} | GUID: {event.get('task', {}).get('guid')}")
 	
 	# --- TASK EVENTS ---
-	if event_type in ("task.task.created_v2", "task.task.updated_v2"):
+	if event_type in ("task.task.created_v2", "task.task.updated_v2", "task.task.created_v1", "task.task.updated_v1"):
 		if settings.todo_sync_method != "Webhook":
 			return
-		task_guid = event.get("task", {}).get("guid")
+		task_guid = event.get("task", {}).get("guid") or event.get("task_id")
 		if task_guid:
 			# Fetch latest detail
 			detail_url = f"{LARK_BASE_URL}/task/v2/tasks/{task_guid}"
@@ -5251,10 +5251,10 @@ def _handle_lark_webhook_event(data):
 					todo.save(ignore_permissions=True)
 				frappe.db.commit()
 	
-	elif event_type == "task.task.deleted_v2":
+	elif event_type in ("task.task.deleted_v2", "task.task.deleted_v1"):
 		if settings.todo_sync_method != "Webhook":
 			return
-		task_guid = event.get("task", {}).get("guid")
+		task_guid = event.get("task", {}).get("guid") or event.get("task_id")
 		if task_guid:
 			todo_name = frappe.db.get_value("ToDo", {"lark_task_guid": task_guid}, "name")
 			if todo_name:
