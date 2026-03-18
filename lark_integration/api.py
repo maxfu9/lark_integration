@@ -218,6 +218,9 @@ def warmup_lark_cache():
 	Pre-loads frequently accessed Lark mappings into Redis to minimize initial latency.
 	Should be called during after_migrate or on app initialization.
 	"""
+	if frappe.flags.in_migrate:
+		return
+
 	try:
 		# Warmup Global Settings & Mappings
 		_get_config()
