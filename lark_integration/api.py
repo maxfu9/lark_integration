@@ -1185,6 +1185,10 @@ def process_lark_notifications(doc, event, method=None):
 	Mirrors native ERPNext Notification behavior.
 	Support for: New, Save, Submit, Cancel, Value Change, Method.
 	"""
+	# CRITICAL: Prevent Infinite Loop during migration or when table doesn't exist yet
+	if not frappe.db.table_exists("Lark Notification"):
+		return
+
 	# De-dup Submit notifications within a short window (submit triggers on_update too)
 	if event == "Submit":
 		dedupe_key = f"lark_notification_sent:{doc.doctype}:{doc.name}:Submit"
@@ -2611,6 +2615,10 @@ def enqueue_journal_entry_sync(doc, handler=None):
 # --- HOOKS WRAPPERS ---
 def handle_universal_update(doc, handler=None):
 	"""Save hook for non-submittable docs."""
+	# CRITICAL: Prevent Recursive Loops for logs and system tables
+	if doc.doctype in ["Error Log", "Lark API Log", "Scheduled Job Log"]:
+		return
+
 	if getattr(doc.meta, "is_submittable", 0):
 		# Only draft saves should trigger Save for submittable docs
 		if doc.docstatus == 0:
@@ -2631,6 +2639,9 @@ def handle_universal_update(doc, handler=None):
 
 def enqueue_universal_sync(doc, handler=None):
 	"""Submit/Update hook for submittable docs."""
+	if doc.doctype in ["Error Log", "Lark API Log", "Scheduled Job Log"]:
+		return
+
 	if doc.docstatus == 1:
 		# Trigger Lark Notifications for Submit
 		try:
@@ -2642,6 +2653,9 @@ def enqueue_universal_sync(doc, handler=None):
 
 def handle_update_after_submit(doc, handler=None):
 	"""Update-after-submit hook for submittable docs."""
+	if doc.doctype in ["Error Log", "Lark API Log", "Scheduled Job Log"]:
+		return
+
 	if doc.docstatus == 1:
 		try:
 			process_lark_notifications(doc, "Save")
