@@ -5152,6 +5152,7 @@ def lark_webhook():
 			frappe.log_error("Lark Webhook Decrypter Error", f"Key: {config.get('encrypt_key')}\nPayload: {data.get('encrypt')}\n\n{frappe.get_traceback()}")
 			return {"status": "error", "message": "Decryption failed"}
 
+	frappe.log_error("Lark Webhook Debug", f"Keys: {list(data.keys())} | Type: {data.get('type')}")
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
 		# Lark requires the challenge to be at the ROOT of the JSON response
@@ -5167,7 +5168,7 @@ def lark_webhook():
 	nonce = frappe.get_request_header("X-Lark-Request-Nonce")
 	
 	# In encrypted mode, the signature check should be against the RAW original (encrypted) body
-	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], frappe.request.get_data(), signature, timestamp, nonce):
+	if config.get("encrypt_key") and not _verify_lark_signature(config["encrypt_key"], raw_body, signature, timestamp, nonce):
 		frappe.log_error("Lark Webhook Security Error", "Invalid signature received from Lark.")
 		return {"status": "error", "message": "Security verification failed"}
 	
