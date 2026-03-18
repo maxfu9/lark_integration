@@ -5135,7 +5135,6 @@ def handle_interactive_card():
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""
 	raw_body = frappe.request.get_data()
-	frappe.log_error("Lark Webhook Entry", f"Method: {frappe.request.method} | UA: {frappe.get_request_header('User-Agent')}")
 	config = _get_config()
 	data = json.loads(raw_body) if raw_body else {}
 	# 0. Decrypt if encrypted
@@ -5147,13 +5146,10 @@ def lark_webhook():
 		try:
 			raw_body_decrypted = _decrypt_lark_payload(config["encrypt_key"], data["encrypt"])
 			data = json.loads(raw_body_decrypted)
-			# LOGGING FOR DEBUGGING
-			frappe.log_error("Lark Webhook Decrypter", f"Decrypted: {raw_body_decrypted}")
 		except Exception:
 			frappe.log_error("Lark Webhook Decrypter Error", f"Key: {config.get('encrypt_key')}\nPayload: {data.get('encrypt')}\n\n{frappe.get_traceback()}")
 			return {"status": "error", "message": "Decryption failed"}
 
-	frappe.log_error("Lark Webhook Debug", f"Keys: {list(data.keys())} | Type: {data.get('type')}")
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
 		# Lark requires the challenge to be at the ROOT of the JSON response
