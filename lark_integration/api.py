@@ -21,20 +21,20 @@ from frappe.utils.pdf import get_pdf
 
 def _verify_lark_signature(key, body_bytes, signature, timestamp, nonce):
 	"""
-	Verifies the authenticity of a Lark webhook request using HMAC-SHA256.
-	Lark Signatures are computed as: HMAC-SHA256(key, timestamp + nonce + body)
+	Verifies the authenticity of a Lark webhook request using SHA256.
+	Algorithm: sha256(timestamp + nonce + verification_token + body_bytes)
 	"""
 	if not key or not signature or not timestamp:
 		return False
 		
 	# 1. Construct target string
 	try:
-		target = f"{timestamp}{nonce}".encode("utf-8") + body_bytes
+		target = f"{timestamp}{nonce}{key}".encode("utf-8") + body_bytes
 	except Exception:
 		return False
 	
 	# 2. Compute local signature
-	local_sig = hmac.new(key.encode("utf-8"), target, hashlib.sha256).hexdigest()
+	local_sig = hashlib.sha256(target).hexdigest()
 	
 	# 3. Secure comparison
 	return hmac.compare_digest(local_sig, signature)
