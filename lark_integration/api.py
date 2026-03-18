@@ -5220,6 +5220,7 @@ def _handle_lark_webhook_event(data):
 	token = get_lark_token()
 	
 	event_type = header.get("event_type")
+	frappe.log_error("Lark Webhook Event", f"Type: {event_type} | GUID: {event.get('task', {}).get('guid')}")
 	
 	# --- TASK EVENTS ---
 	if event_type in ("task.task.created_v2", "task.task.updated_v2"):
@@ -5236,6 +5237,7 @@ def _handle_lark_webhook_event(data):
 				if todo_name:
 					todo = frappe.get_doc("ToDo", todo_name)
 					_sync_todo_from_lark_task(todo, item, settings, token)
+					todo.save(ignore_permissions=True)
 				else:
 					# Create new ToDo
 					todo = frappe.new_doc("ToDo")
@@ -5514,6 +5516,51 @@ def _sync_event_from_lark_detail(erp_event, item, settings, token):
 	except Exception:
 		frappe.log_error(title="Lark Webhook Event Sync Fail", message=frappe.get_traceback())
 
+def _match_erp_user_by_lark_id(lark_user_id, token):
+	"""
+	Helper to find an ERPNext user from a Lark User ID by fetching their 
+	email/mobile and matching against existing User records.
+	"""
+	if not lark_user_id or not token:
+		return None
+		
+	# 1. Fetch user detail from Lark
+	url = f"{LARK_BASE_URL}/contact/v3/users/{lark_user_id}"
+	res = _lark_request("GET", url, token=token, params={"user_id_type": "user_id"})
+	
+	if not res or "data" not in res or "user" not in res["data"]:
+		return None
+		
+	item = res["data"]["user"]
+	lark_email = (item.get("email") or "").strip().lower()
+	lark_mobile = (item.get("mobile") or "").strip()
+	
+	# 2. Match by Email
+	erp_user = None
+	if lark_email:
+		erp_user = frappe.db.get_value("User", {"email": lark_email}, "name")
+		
+	# 3. Match by Mobile (Fallback)
+	if not erp_user and lark_mobile:
+		mobile_variants = [lark_mobile]
+		if lark_mobile.startswith("+"):
+			mobile_variants.append(lark_mobile[1:])
+		else:
+			mobile_variants.append(f"+{lark_mobile}")
+			
+		for m in mobile_variants:
+			erp_user = frappe.db.get_value("User", {"mobile_no": ["like", f"%{m}%"]}, "name")
+			if erp_user:
+				break
+				
+	# 4. If matched, update the ID on the User record for future efficiency
+	if erp_user:
+		frappe.db.set_value("User", erp_user, "lark_user_id", lark_user_id)
+		frappe.db.commit()
+		
+	return erp_user
+
+
 def _sync_todo_from_lark_task(todo, item, settings, token):
 	"""Helper to sync properties from a Lark task object to an ERPNext ToDo."""
 	changed = False
@@ -5607,6 +5654,10 @@ def _sync_todo_from_lark_task(todo, item, settings, token):
 	if assignee:
 		lark_user_id = assignee.get("id")
 		erp_user = frappe.db.get_value("User", {"lark_user_id": lark_user_id}, "name")
+		if not erp_user:
+			# Robust Fallback: Try matching by email/mobile if not pre-synced
+			erp_user = _match_erp_user_by_lark_id(lark_user_id, token)
+		
 		if erp_user and todo.allocated_to != erp_user:
 			todo.allocated_to = erp_user
 			changed = True
