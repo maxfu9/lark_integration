@@ -457,7 +457,7 @@ def _build_fields_payload(doc, mapping: dict):
 		if lark_field == mapping.get("key_field"):
 			try:
 				base_url = frappe.utils.get_url()
-				doc_url = f"{base_url}/app/{frappe.scrub(doc.doctype)}/{doc.name}"
+				doc_url = f"{base_url}/app/{doc.doctype.lower().replace(' ', '-')}/{doc.name}"
 				fields[lark_field] = {
 					"link": doc_url,
 					"text": str(casted_value)
@@ -471,7 +471,7 @@ def _build_fields_payload(doc, mapping: dict):
 	if mapping.get("key_field") and mapping.get("key_field") not in fields:
 		try:
 			base_url = frappe.utils.get_url()
-			doc_url = f"{base_url}/app/{frappe.scrub(doc.doctype)}/{doc.name}"
+			doc_url = f"{base_url}/app/{doc.doctype.lower().replace(' ', '-')}/{doc.name}"
 			fields[mapping["key_field"]] = {
 				"link": doc_url,
 				"text": str(doc.name)
