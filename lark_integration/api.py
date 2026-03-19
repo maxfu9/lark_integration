@@ -5399,6 +5399,7 @@ def _handle_lark_webhook_event(data):
 	
 	event_type = header.get("event_type") or event.get("type")
 	frappe.log_error("Lark Webhook Event", f"Type: {event_type} | Payload: {event}")
+	frappe.db.commit()  # Shield log from frappe transaction rollback
 	
 	# --- TASK EVENTS ---
 	if event_type in ("task.task.created_v2", "task.task.updated_v2", "task.task.created_v1", "task.task.updated_v1"):
@@ -5414,12 +5415,14 @@ def _handle_lark_webhook_event(data):
 				todo_name = frappe.db.get_value("ToDo", {"lark_task_guid": task_guid}, "name")
 				if todo_name:
 					todo = frappe.get_doc("ToDo", todo_name)
+					todo.flags.ignore_lark_sync = True # Stop infinite recursive ping-pong outbound loop
 					_sync_todo_from_lark_task(todo, item, settings, token)
 					todo.save(ignore_permissions=True)
 				else:
 					# Create new ToDo
 					todo = frappe.new_doc("ToDo")
 					todo.lark_task_guid = task_guid
+					todo.flags.ignore_lark_sync = True # Stop infinite recursive ping-pong outbound loop
 					# Initial sync
 					_sync_todo_from_lark_task(todo, item, settings, token)
 					# For new docs, ensure they are inserted first since helper uses db_set
