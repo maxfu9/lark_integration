@@ -5398,8 +5398,8 @@ def _handle_lark_webhook_event(data):
 	settings = frappe.get_single("Lark Integration Settings")
 	token = get_lark_token()
 	
-	event_type = header.get("event_type")
-	frappe.log_error("Lark Webhook Event", f"Type: {event_type} | GUID: {event.get('task', {}).get('guid')}")
+	event_type = header.get("event_type") or event.get("type")
+	frappe.log_error("Lark Webhook Event", f"Type: {event_type} | Payload: {event}")
 	
 	# --- TASK EVENTS ---
 	if event_type in ("task.task.created_v2", "task.task.updated_v2", "task.task.created_v1", "task.task.updated_v1"):
