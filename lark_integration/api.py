@@ -5335,7 +5335,7 @@ def lark_webhook():
 	nonce = frappe.get_request_header("X-Lark-Request-Nonce")
 	
 	# Lark signatures use the Encrypt Key if present, otherwise Verification Token
-	secret = encrypt_key or config.get("verification_token")
+	secret = config.get("encrypt_key") or config.get("verification_token")
 	if secret and not _verify_lark_signature(secret, raw_body, signature, timestamp, nonce):
 		frappe.log_error("Lark Webhook Security Error", "Invalid signature received from Lark.")
 		return {"status": "error", "message": "Security verification failed"}
