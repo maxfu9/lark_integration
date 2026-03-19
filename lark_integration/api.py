@@ -662,7 +662,7 @@ def _sync_child_tables(doc, mapping: dict, token: str, app_token: str):
 	return synced_any
 
 
-def _lark_request(method: str, url: str, token: str | None = None, skip_logging: bool = False, **kwargs):
+def _lark_request(method: str, url: str, token: str | None = None, skip_logging: bool = False, raise_errors: bool = False, **kwargs):
 	headers = dict(kwargs.pop("headers", {}) or {})
 	if token:
 		headers["Authorization"] = f"Bearer {token}"
@@ -760,6 +760,8 @@ def _lark_request(method: str, url: str, token: str | None = None, skip_logging:
 				if response is not None:
 					_log_api_call(method, url, kwargs, response, ref_doctype, ref_name)
 
+			if raise_errors:
+				raise
 			return None
 
 	# Success - Log if enabled
@@ -3293,7 +3295,21 @@ def _sync_todo_record_to_lark(doc_name, existing_guid=None):
 			if final_payload:
 				update_fields = list(final_payload.keys())
 				update_body = {"update_fields": update_fields, "task": final_payload}
-				_lark_request("PATCH", update_url, token=token, json=update_body, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
+				
+				try:
+					_lark_request("PATCH", update_url, token=token, json=update_body, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name, raise_errors=True)
+				except Exception as e:
+					# 1470400: cannot set non-zero completed_at for a completed task
+					if "1470400" in str(e) and "completed_at" in final_payload:
+						# Retry without completed_at to allow other updates (like description) to proceed
+						del final_payload["completed_at"]
+						if final_payload:
+							update_fields = list(final_payload.keys())
+							update_body = {"update_fields": update_fields, "task": final_payload}
+							_lark_request("PATCH", update_url, token=token, json=update_body, params={"user_id_type": "user_id"}, reference_doctype="ToDo", reference_name=doc.name)
+					else:
+						# Fallback to standard logging if it's a different error
+						_log_api_error(f"PATCH {update_url} failed: {e}")
 
 			# Assignees
 			if payload.get("members"):
