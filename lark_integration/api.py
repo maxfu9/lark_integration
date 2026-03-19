@@ -21,30 +21,45 @@ from frappe.utils.pdf import get_pdf
 
 def _verify_lark_signature(key, body_bytes, signature, timestamp, nonce):
 	"""
-	Verifies the authenticity of a Lark webhook request using SHA256.
-	Algorithm: sha256(timestamp + nonce + verification_token + body_bytes)
+	Verifies the authenticity of a Lark webhook request.
+	Standard V2: sha256(timestamp + nonce + verification_token + body_bytes)
+	Fallback: hmac_sha256(verification_token, timestamp + nonce + body_bytes)
 	"""
+	key = str(key or "").strip()
+	signature = str(signature or "").strip()
+	timestamp = str(timestamp or "").strip()
+	nonce = str(nonce or "").strip()
+	body_bytes = body_bytes or b""
+	
 	if not key or not signature or not timestamp:
 		return False
 		
-	# 1. Construct target string
-	try:
-		target = f"{timestamp}{nonce}{key}".encode("utf-8") + body_bytes
-	except Exception:
-		return False
-	
-	# 2. Compute local signature
+	# Method 1: Concatenated SHA256 (Official V2 Event spec)
+	target = f"{timestamp}{nonce}{key}".encode("utf-8") + body_bytes
 	local_sig = hashlib.sha256(target).hexdigest()
 	
-	# DIAGNOSTIC: Log signature comparison on mismatch
-	if local_sig != signature:
-		frappe.log_error(
-			"Lark Signature Mismatch", 
-			f"Target string: {target.decode('utf-8', 'ignore')}\nCalculated: {local_sig}\nReceived: {signature}"
-		)
+	if hmac.compare_digest(local_sig, signature):
+		return True
+
+	# Method 2: HMAC-SHA256 (Common for some Lark security tests)
+	# Using 'key' (Verification Token) as the secret.
+	target_hmac = f"{timestamp}{nonce}".encode("utf-8") + body_bytes
+	local_sig_hmac = hmac.new(key.encode("utf-8"), target_hmac, hashlib.sha256).hexdigest()
 	
-	# 3. Secure comparison
-	return hmac.compare_digest(local_sig, signature)
+	if hmac.compare_digest(local_sig_hmac, signature):
+		return True
+	
+	# DIAGNOSTIC: Log mismatch details
+	frappe.log_error(
+		title="Lark Signature Mismatch",
+		message=(
+			f"Headers:\nTimestamp: {timestamp}\nNonce: {nonce}\nReceived Sig: {signature}\n\n"
+			f"Computed (Concat): {local_sig}\n"
+			f"Computed (HMAC): {local_sig_hmac}\n"
+			f"Body Prefix: {body_bytes[:200].decode('utf-8', 'ignore') if body_bytes else 'None'}"
+		)
+	)
+	return False
 
 LARK_BASE_URL = "https://open.larksuite.com/open-apis"
 TOKEN_CACHE_KEY = "lark_integration:tenant_access_token"
