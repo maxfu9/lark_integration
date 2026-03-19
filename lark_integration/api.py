@@ -426,8 +426,7 @@ def _cast_custom_value(value, value_type: str):
 	if cast_type == "Text":
 		val_str = str(value)
 		if "<div" in val_str or "<p" in val_str or "ql-editor" in val_str:
-			from frappe.utils import strip_html
-			return strip_html(val_str).strip()
+			return clean_html(val_str)
 		return val_str
 	return str(value)
 
@@ -548,10 +547,19 @@ def _build_doc_item_summary(doc, mapping: dict):
 		try:
 			# Support standard {fieldname} by converting to Jinja {{ fieldname }}
 			jinja_template = str(template).replace("{", "{{ ").replace("}", " }}")
-			row_str = frappe.render_template(jinja_template, d.as_dict())
+			
+			# Pre-clean the context dictionary to remove HTML before Jinja rendering
+			# This ensures numeric fields like sanctioned_amount are untouched
+			row_dict = {}
+			for k, v in d.as_dict().items():
+				if isinstance(v, str) and ("<div" in v or "<p" in v or "ql-editor" in v):
+					row_dict[k] = clean_html(v)
+				else:
+					row_dict[k] = v
+			
+			row_str = frappe.render_template(jinja_template, row_dict)
 			if row_str.strip():
-				from frappe.utils import strip_html
-				lines.append(strip_html(row_str.strip()))
+				lines.append(row_str.strip())
 		except Exception:
 			continue
 
