@@ -5841,12 +5841,23 @@ def _sync_todo_from_lark_task(todo, item, settings, token):
 		
 		if erp_user and todo.allocated_to != erp_user:
 			todo.allocated_to = erp_user
+			todo.owner = erp_user
 			changed = True
 	else:
-		# Clear if blank in Lark
-		if todo.allocated_to:
-			todo.allocated_to = None
-			changed = True
+		# Map Creator to Owner if unassigned
+		creator_id = item.get("creator", {}).get("id")
+		if creator_id:
+			erp_user = frappe.db.get_value("User", {"lark_user_id": creator_id}, "name")
+			if not erp_user: erp_user = _match_erp_user_by_lark_id(creator_id, token)
+			if erp_user and (todo.allocated_to != erp_user or todo.owner != erp_user):
+				todo.allocated_to = erp_user
+				todo.owner = erp_user
+				changed = True
+		else:
+			# Clear if absolutely blank in Lark
+			if todo.allocated_to:
+				todo.allocated_to = None
+				changed = True
 
 	# Task List
 	lark_lists = item.get("tasklists", [])
