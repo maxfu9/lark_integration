@@ -5386,11 +5386,11 @@ def _handle_lark_webhook_event(data):
 	event = data.get("event", {})
 	
 	# Safety check for empty or malformed payload
-	if not header or not event:
-		if not header and not event:
+	if not event:
+		if not header:
 			# Likely a URL verification challenge
 			return {"status": "ignored"}
-		return {"status": "error", "message": "Malformed webhook payload"}
+		return {"status": "error", "message": "Malformed webhook payload (missing event dict)"}
 
 	settings = frappe.get_single("Lark Integration Settings")
 	token = get_lark_token()
