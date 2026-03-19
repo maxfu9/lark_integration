@@ -5325,12 +5325,9 @@ def lark_webhook():
 	if data.get("type") == "url_verification":
 		frappe.log_error("Lark Webhook Challenge", "Returning Challenge Response")
 		frappe.db.commit()
-		# Lark requires the challenge to be at the ROOT of the JSON response
-		# Returning a Response object bypasses Frappe's default {'message': ...} wrapper
-		return Response(
-			json.dumps({"challenge": data.get("challenge")}),
-			mimetype="application/json"
-		)
+		# Use native frappe.response to natively render the root-level 'challenge' JSON
+		frappe.response.update({"challenge": data.get("challenge")})
+		return
 
 	# 2. Security: Verify Signature
 	signature = frappe.get_request_header("X-Lark-Signature")
