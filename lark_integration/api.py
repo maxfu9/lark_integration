@@ -5338,7 +5338,9 @@ def lark_webhook():
 		return {"status": "error", "message": "Security verification failed"}
 	
 	# 3. Security: Verify Token
-	if config.get("verification_token") and data.get("token") != config["verification_token"]:
+	# V1 events have token at root, V2 events have it inside header
+	request_token = data.get("token") or (data.get("header") or {}).get("token")
+	if config.get("verification_token") and request_token != config["verification_token"]:
 		return {"status": "error", "message": "Verification token mismatch"}
 	
 	# 4. Dispatch all other events to background job for performance
