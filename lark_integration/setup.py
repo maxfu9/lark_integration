@@ -5,9 +5,30 @@ def after_install():
     pass
 
 def after_migrate():
+    """Ensure the UI is clean and metadata is fresh after EVERY migration."""
+    clear_lark_property_setters()
     create_custom_fields_if_missing()
+    
+    # Force reload of core DocTypes to ensure JSON changes take effect
+    for dt in ["Lark Sync Document", "Lark Sync Child Table", "Lark Sync Child Field"]:
+        try:
+            frappe.reload_doc("lark_integration", "doctype", frappe.scrub(dt), force=True)
+        except Exception:
+            pass
+
     from lark_integration.api import warmup_lark_cache
     warmup_lark_cache()
+
+def clear_lark_property_setters():
+    """Delete all UI overrides (Property Setters) for app DocTypes to match JSON exactly."""
+    doctypes = [
+        "Lark Sync Document", "Lark Sync Child Table", "Lark Sync Child Field",
+        "Lark Sync Field", "Lark Integration Settings", "Lark Notification",
+        "Lark Task List", "Lark Calendar", "Lark Approval Mapping"
+    ]
+    for dt in doctypes:
+        frappe.db.sql("DELETE FROM `tabProperty Setter` WHERE doc_type=%s", dt)
+    frappe.db.commit()
 
 def create_custom_fields_if_missing():
     """Ensure all required custom fields for Lark Integration exist."""
