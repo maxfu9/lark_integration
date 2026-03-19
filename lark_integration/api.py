@@ -2074,7 +2074,6 @@ def _replace_attachment_with_lark_proxy(file_doc, lark_file_token: str, folder_t
 		sql = f"UPDATE `tabFile` SET {set_clause} WHERE name=%s"
 		frappe.db.sql(sql, tuple(params))
 		frappe.db.commit()
-		frappe.log_error(title="Lark SQL Patch Success", message=f"SQL: {sql} | Params: {params}")
 	except Exception:
 		frappe.log_error(
 			title=f"Lark Drive: failed to update file_url for: {file_doc.name}",
@@ -2242,7 +2241,7 @@ def _delete_lark_file_job(links, parent_doctype=None, parent_name=None):
 
 @frappe.whitelist()
 def download_lark_drive_file(record: str):
-	frappe.log_error(title="Lark Download Attempt", message=f"Attempting download for record: {record} by user {frappe.session.user}")
+	frappe.logger().debug(f"Lark Drive: Attempting download for record: {record} by user {frappe.session.user}")
 	if not _doctype_available("Lark Drive File"):
 		frappe.throw("Lark Drive File DocType is not available")
 
@@ -2310,7 +2309,6 @@ def _sync_linked_references(references: Iterable):
 		
 		if ref_type and ref_name:
 			log_msg = f"Enqueuing linked sync: {ref_type} {ref_name}"
-			frappe.log_error(title="Lark Reference Sync Triggered", message=log_msg)
 			_enqueue_sync_for_reference(ref_type, ref_name)
 
 
