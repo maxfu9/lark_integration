@@ -4992,9 +4992,15 @@ def link_lark_task_list(doc_name, guid):
 			_lark_request("POST", url, token=token, json={
 				"members": [{"id": current_lark_id, "type": "user", "role": "editor"}]
 			}, params={"user_id_type": "user_id"}, skip_logging=True)
-		except Exception:
+		except Exception as e:
 			# If the app lacks permission to add members (403), we ignore it silently
-			# as it's a non-critical usability step.
+			# but provide a helpful tip to the user if it's a UI action.
+			if "403" in str(e):
+				msg = (
+					"<b>Lark Hint:</b> Shared list linked successfully, but the App Bot could not automatically add you as a member.<br><br>"
+					"Please <b>Add the App Bot as a 'Manager'</b> to this Tasklist in the Lark UI to enable automatic membership sync."
+				)
+				frappe.msgprint(msg, title="Lark Permission Note")
 			pass
 
 	clear_lark_cache()
