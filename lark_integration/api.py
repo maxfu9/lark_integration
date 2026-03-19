@@ -5346,14 +5346,15 @@ def lark_webhook():
 	if config.get("verification_token") and request_token != config["verification_token"]:
 		return {"status": "error", "message": "Verification token mismatch"}
 	
-	# 4. Dispatch all other events to background job for performance
-	frappe.enqueue(
-		"lark_integration.api._handle_lark_webhook_event",
-		data=data,
-		queue="long",
-		enqueue_after_commit=True
-	)
-	return {"status": "success", "message": "Event enqueued"}
+	# 4. Dispatch event synchronously to ensure execution and bypass frail DEV background queues
+	try:
+		_handle_lark_webhook_event(data)
+	except Exception as e:
+		frappe.log_error("Lark Webhook Sync Error", str(e))
+	
+	# Send strict `msg: success` root JSON to Lark so it doesn't retry
+	frappe.response.update({"msg": "success"})
+	return
 
 def _decrypt_lark_payload(encrypt_key: str, payload_base64: str) -> str:
 	"""
