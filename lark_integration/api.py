@@ -426,8 +426,8 @@ def _cast_custom_value(value, value_type: str):
 	if cast_type == "Text":
 		val_str = str(value)
 		if "<div" in val_str or "<p" in val_str or "ql-editor" in val_str:
-			from frappe.utils import html2text
-			return html2text(val_str).strip()
+			from frappe.utils import strip_html
+			return strip_html(val_str).strip()
 		return val_str
 	return str(value)
 
@@ -550,7 +550,8 @@ def _build_doc_item_summary(doc, mapping: dict):
 			jinja_template = str(template).replace("{", "{{ ").replace("}", " }}")
 			row_str = frappe.render_template(jinja_template, d.as_dict())
 			if row_str.strip():
-				lines.append(row_str.strip())
+				from frappe.utils import strip_html
+				lines.append(strip_html(row_str.strip()))
 		except Exception:
 			continue
 
