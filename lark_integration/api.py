@@ -419,6 +419,8 @@ def _cast_custom_value(value, value_type: str):
 			return None
 	if cast_type == "Check":
 		return bool(value)
+	if cast_type == "Currency":
+		return fmt_money(value)
 	if cast_type in {"Date", "Datetime"}:
 		return _ts_ms(value)
 	if cast_type == "Raw":
@@ -556,6 +558,10 @@ def _build_doc_item_summary(doc, mapping: dict):
 					row_dict[k] = clean_html(v)
 				else:
 					row_dict[k] = v
+			
+			# Add parent and utilities to the context
+			row_dict["parent"] = doc
+			row_dict["fmt_money"] = fmt_money
 			
 			row_str = frappe.render_template(jinja_template, row_dict)
 			if row_str.strip():
