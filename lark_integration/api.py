@@ -743,6 +743,14 @@ def _lark_request(method: str, url: str, token: str | None = None, skip_logging:
 						"2. You **MUST** invite your App Bot to the target folder or Bitable in the Lark UI (e.g. Share > Add Collaborator > Search App Name)."
 					)
 					frappe.log_error(title="Lark Permission Error (1061004)", message=f"{tip}\n\nURL: {url}\n{res_text}")
+				
+				if '"code":1470403' in res_text:
+					tip = (
+						"💡 **Fix Tip for Tasklist 403 (1470403):**\n"
+						"The App Bot lacks permission to manage members on this Tasklist.\n"
+						"**Action**: Open the Tasklist in Lark UI and add your App Bot as a 'Manager' or 'Editor'."
+					)
+					frappe.log_error(title="Lark Tasklist Permission Error (1470403)", message=f"{tip}\n\nURL: {url}\n{res_text}")
 			except Exception:
 				detail["body"] = None
 			
