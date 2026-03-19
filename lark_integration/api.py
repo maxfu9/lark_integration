@@ -381,13 +381,18 @@ def _get_sync_mapping(doctype: str):
 	return mapping
 
 
-def _resolve_field_path(doc, field_path: str):
+def _resolve_field_path(doc, field_path: str, parent_doc=None):
 	current = doc
 	for key in (field_path or "").split("."):
 		if not key:
 			continue
 		if current is None:
 			return None
+
+		if key == "parent" and parent_doc:
+			current = parent_doc
+			continue
+
 		if hasattr(current, "get"):
 			current = current.get(key)
 		elif isinstance(current, dict):
@@ -546,7 +551,7 @@ def _build_doc_item_summary(doc, mapping: dict):
 	return "\n".join(lines)
 
 
-def _build_child_item_records(child_rows, child_fields, key_field: str, parent_name: str):
+def _build_child_item_records(child_rows, child_fields, key_field: str, parent_doc):
 	item_records = []
 	for row in child_rows or []:
 		fields = {}
@@ -555,7 +560,7 @@ def _build_child_item_records(child_rows, child_fields, key_field: str, parent_n
 			if not lark_field:
 				continue
 
-			raw_value = _resolve_field_path(row, custom.get("child_field_path", ""))
+			raw_value = _resolve_field_path(row, custom.get("child_field_path", ""), parent_doc=parent_doc)
 			if raw_value in (None, "") and custom.get("default_value") not in (None, ""):
 				raw_value = custom.get("default_value")
 
@@ -566,7 +571,7 @@ def _build_child_item_records(child_rows, child_fields, key_field: str, parent_n
 			fields[lark_field] = casted_value
 
 		if key_field and key_field not in fields:
-			fields[key_field] = str(parent_name)
+			fields[key_field] = str(parent_doc.name)
 
 		if fields:
 			item_records.append({"fields": fields})
@@ -617,7 +622,7 @@ def _sync_child_tables(doc, mapping: dict, token: str, app_token: str):
 			doc.get(child_table_field), 
 			fields_for_this_table, 
 			mapping.get("key_field"), 
-			doc.name
+			doc
 		)
 		
 		clear_and_sync_items(
