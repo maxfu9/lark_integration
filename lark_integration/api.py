@@ -423,6 +423,12 @@ def _cast_custom_value(value, value_type: str):
 		return _ts_ms(value)
 	if cast_type == "Raw":
 		return value
+	if cast_type == "Text":
+		val_str = str(value)
+		if "<div" in val_str or "<p" in val_str or "ql-editor" in val_str:
+			from frappe.utils import html2text
+			return html2text(val_str).strip()
+		return val_str
 	return str(value)
 
 
