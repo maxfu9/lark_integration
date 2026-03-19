@@ -5300,14 +5300,17 @@ def handle_interactive_card():
 def lark_webhook():
 	"""Webhook endpoint for Lark Events."""
 	frappe.log_error("Lark Webhook Entry", "Absolute first line of function reached")
+	frappe.db.commit()  # Force commit to survive ANY framework rollbacks
+	
 	raw_body = frappe.request.get_data()
 	frappe.log_error("Lark Webhook Raw", f"Headers: {dict(frappe.request.headers)}\nPayload: {raw_body.decode('utf-8', 'ignore')[:1000]}")
+	frappe.db.commit()
+	
 	config = _get_config()
 	data = json.loads(raw_body) if raw_body else {}
 	# 0. Decrypt if encrypted
 	if data.get("encrypt"):
 		if not config.get("encrypt_key"):
-			frappe.log_error("Lark Webhook Error", "Encrypted payload received but no Encryption Key configured.")
 			return {"status": "error", "message": "Encryption Key missing"}
 		
 		try:
@@ -5315,10 +5318,13 @@ def lark_webhook():
 			data = json.loads(raw_body_decrypted)
 		except Exception as e:
 			frappe.log_error("Lark Webhook Decrypter Error", f"Key: {config.get('encrypt_key')}\nDecrypted String (repr): {repr(raw_body_decrypted) if 'raw_body_decrypted' in locals() else 'None'}\n\nException: {e}\n\n{frappe.get_traceback()}")
+			frappe.db.commit()
 			return {"status": "error", "message": f"Decryption/JSON failed: {e}"}
 
 	# 1. URL Verification
 	if data.get("type") == "url_verification":
+		frappe.log_error("Lark Webhook Challenge", "Returning Challenge Response")
+		frappe.db.commit()
 		# Lark requires the challenge to be at the ROOT of the JSON response
 		# Returning a Response object bypasses Frappe's default {'message': ...} wrapper
 		return Response(
