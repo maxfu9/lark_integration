@@ -1802,15 +1802,15 @@ def clear_and_sync_items(table_id, parent_field_name, doc_name, item_records, to
 	return True
 
 
-def upload_to_lark_drive(file_name: str, content: bytes, token: str, folder_token: str, reference_doctype=None, reference_name=None):
-	if not token or not folder_token or not content:
+def upload_to_lark_drive(file_name: str, content: bytes = None, token: str = None, folder_token: str = None, reference_doctype=None, reference_name=None, file_path=None):
+	if not token or not folder_token or (not content and not file_path):
 		return None
 
-	size = len(content)
+	size = os.path.getsize(file_path) if file_path else len(content)
 	# Lark's simple upload (upload_all) is limited to 20MB. 
 	# For larger files, use resumable (multi-part) upload.
 	if size > 20 * 1024 * 1024:
-		return _upload_large_file_to_lark_drive(file_name, content, token, folder_token, reference_doctype, reference_name)
+		return _upload_large_file_to_lark_drive(file_name, content, token, folder_token, reference_doctype, reference_name, file_path)
 
 	upload_url = f"{LARK_BASE_URL}/drive/v1/files/upload_all"
 	params = {
@@ -1819,15 +1819,15 @@ def upload_to_lark_drive(file_name: str, content: bytes, token: str, folder_toke
 		"parent_node": folder_token,
 		"size": size,
 	}
-	files = {"file": (file_name, content, "application/octet-stream")}
+	files = {"file": (file_name, content if content is not None else open(file_path, "rb"), "application/octet-stream")}
 	payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=reference_doctype, reference_name=reference_name)
 	if not payload:
 		return None
 	return payload.get("data", {}).get("file_token")
 
-def _upload_large_file_to_lark_drive(file_name, content, token, folder_token, reference_doctype=None, reference_name=None):
-	"""Multi-part upload for files > 20MB."""
-	size = len(content)
+def _upload_large_file_to_lark_drive(file_name, content, token, folder_token, reference_doctype=None, reference_name=None, file_path=None):
+	"""Multi-part upload for files > 20MB with streaming support."""
+	size = os.path.getsize(file_path) if file_path else len(content)
 	
 	# 1. Prepare
 	prepare_url = f"{LARK_BASE_URL}/drive/v1/files/upload_prepare"
@@ -1847,22 +1847,31 @@ def _upload_large_file_to_lark_drive(file_name, content, token, folder_token, re
 	
 	# 2. Upload Parts
 	part_url = f"{LARK_BASE_URL}/drive/v1/files/upload_part"
-	for i, start in enumerate(range(0, size, chunk_size)):
-		end = min(start + chunk_size, size)
-		chunk = content[start:end]
-		
-		# For part upload, Lark expects form-data including the file part
-		params = {
-			"upload_id": upload_id,
-			"seq": i,
-			"size": len(chunk)
-		}
-		files = {"file": (file_name, chunk, "application/octet-stream")}
-		
-		res_part = _lark_request("POST", part_url, token=token, data=params, files=files, reference_doctype=reference_doctype, reference_name=reference_name)
-		if not res_part:
-			return None
-		blocks.append(i)
+	opened_file = open(file_path, "rb") if file_path else None
+	
+	try:
+		for i, start in enumerate(range(0, size, chunk_size)):
+			end = min(start + chunk_size, size)
+			if opened_file:
+				opened_file.seek(start)
+				chunk = opened_file.read(chunk_size)
+			else:
+				chunk = content[start:end]
+			
+			params = {
+				"upload_id": upload_id,
+				"seq": i,
+				"size": len(chunk)
+			}
+			files = {"file": (file_name, chunk, "application/octet-stream")}
+			
+			res_part = _lark_request("POST", part_url, token=token, data=params, files=files, reference_doctype=reference_doctype, reference_name=reference_name)
+			if not res_part:
+				return None
+			blocks.append(i)
+	finally:
+		if opened_file:
+			opened_file.close()
 
 	# 3. Finish
 	finish_url = f"{LARK_BASE_URL}/drive/v1/files/upload_finish"
@@ -2509,12 +2518,38 @@ def _upload_backups_to_lark(settings, backup_paths, publish_progress=False):
 			progress_val = 40 + int((i / total) * 40)
 			_publish_backup_progress(progress_val, f"Uploading {base_name} to Lark Drive...")
 
-		with open(path, "rb") as f:
-			content = f.read()
-			token_res = upload_to_lark_drive(os.path.basename(path), content, token, settings.backup_lark_folder)
+		# Split file if exceeds 480MB limit for Lark Drive
+		size = os.path.getsize(path)
+		if size > 480 * 1024 * 1024:
+			# SPLIT UPLOAD
+			chunk_size_bytes = 450 * 1024 * 1024
+			num_chunks = (size + chunk_size_bytes - 1) // chunk_size_bytes
+			
+			with open(path, "rb") as main_f:
+				for chunk_idx in range(num_chunks):
+					chunk_name = f"{os.path.basename(path)}.{chunk_idx+1:03d}"
+					if publish_progress:
+						_publish_backup_progress(40, f"Uploading {chunk_name}... (Volume {chunk_idx+1}/{num_chunks})")
+					
+					# Read chunk WITHOUT loading full file into RAM
+					# We temporarily write the chunk to a temp file for the streaming helper
+					import tempfile
+					with tempfile.NamedTemporaryFile(delete=False) as tmp_f:
+						tmp_path = tmp_f.name
+						main_f.seek(chunk_idx * chunk_size_bytes)
+						tmp_f.write(main_f.read(chunk_size_bytes))
+					
+					try:
+						token_res = upload_to_lark_drive(chunk_name, token=token, folder_token=settings.backup_lark_folder, file_path=tmp_path)
+						if not token_res:
+							raise RuntimeError(f"Failed to upload volume {chunk_name}")
+					finally:
+						if os.path.exists(tmp_path):
+							os.remove(tmp_path)
+		else:
+			# STANDARD STREAMING UPLOAD
+			token_res = upload_to_lark_drive(os.path.basename(path), token=token, folder_token=settings.backup_lark_folder, file_path=path)
 			if not token_res:
-				# Raising an error here will be caught by the caller (_run_instant_backup or run_backup_scheduler)
-				# which correctly updates the backup status to "Failed"
 				raise RuntimeError(f"Failed to upload {os.path.basename(path)} to Lark Drive. Check Lark API Logs for details.")
 
 
