@@ -545,7 +545,7 @@ def _build_doc_item_summary(doc, mapping: dict):
 		return ""
 
 	lines = []
-	for d in doc.get(child_table) or []:
+	for i, d in enumerate(doc.get(child_table) or [], start=1):
 		try:
 			# Support standard {fieldname} by converting to Jinja {{ fieldname }}
 			jinja_template = str(template).replace("{", "{{ ").replace("}", " }}")
@@ -559,7 +559,8 @@ def _build_doc_item_summary(doc, mapping: dict):
 				else:
 					row_dict[k] = v
 			
-			# Add parent and utilities to the context
+			# Add parent, utilities, and index to the context
+			row_dict["idx"] = i
 			row_dict["parent"] = doc
 			row_dict["fmt_money"] = fmt_money
 			
