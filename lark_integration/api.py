@@ -5456,14 +5456,19 @@ def _handle_lark_webhook_event(data):
 				event_name = frappe.db.get_value("Event", {"lark_event_id": event_id}, "name")
 				if event_name:
 					erp_event = frappe.get_doc("Event", event_name)
+					erp_event.flags.ignore_lark_sync = True # Stop infinite recursive ping-pong outbound loop
 					_sync_event_from_lark_detail(erp_event, item, settings, token)
+					erp_event.save(ignore_permissions=True)
 				else:
 					# Create new Event
 					erp_event = frappe.new_doc("Event")
 					erp_event.lark_event_id = event_id
 					erp_event.lark_calendar_id = calendar_id
+					erp_event.flags.ignore_lark_sync = True # Stop infinite recursive ping-pong outbound loop
 					_sync_event_from_lark_detail(erp_event, item, settings, token)
 					erp_event.insert(ignore_permissions=True)
+					# Better to explicitly call save to trigger naming strings, though insert is enough
+					erp_event.save(ignore_permissions=True)
 				frappe.db.commit()
 
 	elif event_type == "calendar.calendar_event.deleted_v4":
