@@ -1806,18 +1806,75 @@ def upload_to_lark_drive(file_name: str, content: bytes, token: str, folder_toke
 	if not token or not folder_token or not content:
 		return None
 
+	size = len(content)
+	# Lark's simple upload (upload_all) is limited to 20MB. 
+	# For larger files, use resumable (multi-part) upload.
+	if size > 20 * 1024 * 1024:
+		return _upload_large_file_to_lark_drive(file_name, content, token, folder_token, reference_doctype, reference_name)
+
 	upload_url = f"{LARK_BASE_URL}/drive/v1/files/upload_all"
 	params = {
 		"file_name": file_name,
 		"parent_type": LARK_DRIVE_PARENT_TYPE,
 		"parent_node": folder_token,
-		"size": len(content),
+		"size": size,
 	}
 	files = {"file": (file_name, content, "application/octet-stream")}
 	payload = _lark_request("POST", upload_url, token=token, data=params, files=files, timeout=120, reference_doctype=reference_doctype, reference_name=reference_name)
 	if not payload:
 		return None
 	return payload.get("data", {}).get("file_token")
+
+def _upload_large_file_to_lark_drive(file_name, content, token, folder_token, reference_doctype=None, reference_name=None):
+	"""Multi-part upload for files > 20MB."""
+	size = len(content)
+	
+	# 1. Prepare
+	prepare_url = f"{LARK_BASE_URL}/drive/v1/files/upload_prepare"
+	prepare_data = {
+		"file_name": file_name,
+		"parent_type": LARK_DRIVE_PARENT_TYPE,
+		"parent_node": folder_token,
+		"size": size
+	}
+	res_prepare = _lark_request("POST", prepare_url, token=token, json=prepare_data, reference_doctype=reference_doctype, reference_name=reference_name)
+	if not res_prepare or "data" not in res_prepare or "upload_id" not in res_prepare["data"]:
+		return None
+	
+	upload_id = res_prepare["data"]["upload_id"]
+	chunk_size = 4 * 1024 * 1024 # 4MB chunks
+	blocks = []
+	
+	# 2. Upload Parts
+	part_url = f"{LARK_BASE_URL}/drive/v1/files/upload_part"
+	for i, start in enumerate(range(0, size, chunk_size)):
+		end = min(start + chunk_size, size)
+		chunk = content[start:end]
+		
+		# For part upload, Lark expects form-data including the file part
+		params = {
+			"upload_id": upload_id,
+			"seq": i,
+			"size": len(chunk)
+		}
+		files = {"file": (file_name, chunk, "application/octet-stream")}
+		
+		res_part = _lark_request("POST", part_url, token=token, data=params, files=files, reference_doctype=reference_doctype, reference_name=reference_name)
+		if not res_part:
+			return None
+		blocks.append(i)
+
+	# 3. Finish
+	finish_url = f"{LARK_BASE_URL}/drive/v1/files/upload_finish"
+	finish_data = {
+		"upload_id": upload_id,
+		"block_num": len(blocks)
+	}
+	res_finish = _lark_request("POST", finish_url, token=token, json=finish_data, reference_doctype=reference_doctype, reference_name=reference_name)
+	if not res_finish or "data" not in res_finish:
+		return None
+		
+	return res_finish["data"].get("file_token")
 
 def upload_attachment_to_bitable(file_name: str, content: bytes, token: str, app_token: str, reference_doctype=None, reference_name=None):
 	if not token or not app_token or not content:
