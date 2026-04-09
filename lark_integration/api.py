@@ -8,18 +8,18 @@ from frappe.utils.pdf import get_pdf
 from frappe.utils import fmt_money
 
 # --- CONFIGURATION ---
-APP_ID = "cli_a9d7fc7da2b8de1b"
-APP_SECRET = "qe4e3jNV9MVRciFmilD2oefa8tHV2xDy"
-APP_TOKEN = "H1B2bDAiwaezmxse3aljaQMvpmh"
+APP_ID = ""
+APP_SECRET = ""
+APP_TOKEN = ""
 
 # Table IDs
-TABLE_SALES_MAIN = "tblktIAaNPC4bhLN"
-TABLE_SALES_ITEMS = "tblDSxyyFFeLu33g"
-TABLE_PAYMENT = "tblOBzsXVnhNemP1"
-TABLE_PURCHASE_MAIN = "tblrWrOxsGU0zlgS"
-TABLE_PURCHASE_ITEMS = "tblwJ7329t7dD9A0"
-TABLE_EXPENSE = "tblQugQiDkcBbNLY"
-TABLE_EXPENSE_ITEMS = "tblu5kcxOZaXZmbJ"
+TABLE_SALES_MAIN = ""
+TABLE_SALES_ITEMS = ""
+TABLE_PAYMENT = ""
+TABLE_PURCHASE_MAIN = ""
+TABLE_PURCHASE_ITEMS = ""
+TABLE_EXPENSE = ""
+TABLE_EXPENSE_ITEMS = ""
 
 # --- HELPER FUNCTIONS ---
 
