@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 lark_integration.patches.setup_lark_desk_navigation
 lark_integration.patches.restore_lark_desk_navigation
+lark_integration.patches.fix_lark_sidebar_landing

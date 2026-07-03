@@ -3,18 +3,25 @@ import frappe
 
 SIDEBAR_ITEMS = [
 	{
-		"label": "Dashboard",
-		"link_type": "Workspace",
-		"link_to": "Lark Integration",
-		"type": "Link",
-		"icon": "home",
-	},
-	{
 		"label": "Settings",
 		"link_type": "DocType",
 		"link_to": "Lark Integration Settings",
 		"type": "Link",
 		"icon": "settings",
+	},
+	{
+		"label": "Notifications",
+		"link_type": "DocType",
+		"type": "Section Break",
+		"icon": "bell",
+		"indent": 1,
+	},
+	{
+		"label": "Notification Rules",
+		"link_type": "DocType",
+		"link_to": "Lark Notification",
+		"type": "Link",
+		"child": 1,
 	},
 	{
 		"label": "Configuration",
@@ -34,6 +41,13 @@ SIDEBAR_ITEMS = [
 		"label": "Approval Mappings",
 		"link_type": "DocType",
 		"link_to": "Lark Approval Mapping",
+		"type": "Link",
+		"child": 1,
+	},
+	{
+		"label": "Workspace",
+		"link_type": "Workspace",
+		"link_to": "Lark Integration",
 		"type": "Link",
 		"child": 1,
 	},
@@ -170,6 +184,15 @@ def normalize_sidebar_item(item):
 
 
 def clear_desk_navigation_cache():
+	try:
+		from frappe.desk.doctype.workspace_sidebar.workspace_sidebar import (
+			auto_generate_sidebar_from_module,
+		)
+
+		auto_generate_sidebar_from_module.clear_cache()
+	except Exception:
+		pass
+
 	frappe.cache.delete_key("desktop_icons")
 	frappe.cache.delete_key("bootinfo")
 	frappe.clear_cache()
