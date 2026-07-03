@@ -124,8 +124,8 @@ def upsert_lark_desktop_icon():
 			"icon": "notification",
 			"hidden": 0,
 			"restrict_removal": 0,
-			"standard": 1,
-			"app": "lark_integration",
+			"standard": 0,
+			"app": None,
 			"idx": icon.idx or 21,
 		}
 	)
@@ -144,8 +144,8 @@ def upsert_lark_workspace_sidebar():
 			"title": "Lark Integration",
 			"header_icon": "notification",
 			"module": "Lark Integration",
-			"app": "lark_integration",
-			"standard": 1,
+			"app": None,
+			"standard": 0,
 		}
 	)
 	sidebar.set("items", [])

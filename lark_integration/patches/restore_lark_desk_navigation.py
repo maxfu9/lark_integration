@@ -1,0 +1,1 @@
+from lark_integration.patches.setup_lark_desk_navigation import execute

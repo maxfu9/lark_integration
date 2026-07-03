@@ -1,5 +1,5 @@
 {
- "app": "lark_integration",
+ "app": null,
  "creation": "2026-07-03 00:00:00.000000",
  "docstatus": 0,
  "doctype": "Workspace Sidebar",
@@ -176,6 +176,6 @@
  "module": "Lark Integration",
  "name": "Lark Integration",
  "owner": "Administrator",
- "standard": 1,
+ "standard": 0,
  "title": "Lark Integration"
 }
