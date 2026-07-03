@@ -104,8 +104,8 @@ SIDEBAR_ITEMS = [
 
 
 def execute():
-	upsert_lark_desktop_icon()
 	upsert_lark_workspace_sidebar()
+	upsert_lark_desktop_icon()
 	clear_desk_navigation_cache()
 
 
