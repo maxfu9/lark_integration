@@ -1,6 +1,6 @@
 {
  "charts": [],
- "content": "[{\"id\":\"card_settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"card_notifications\",\"type\":\"card\",\"data\":{\"card_name\":\"Notifications\",\"col\":4}},{\"id\":\"card_config\",\"type\":\"card\",\"data\":{\"card_name\":\"Configuration\",\"col\":4}},{\"id\":\"card_data\",\"type\":\"card\",\"data\":{\"card_name\":\"Data\",\"col\":4}},{\"id\":\"card_logs\",\"type\":\"card\",\"data\":{\"card_name\":\"Logs\",\"col\":4}}]",
+ "content": "[{\"id\":\"card_settings\",\"type\":\"card\",\"data\":{\"card_name\":\"Settings\",\"col\":4}},{\"id\":\"card_notifications\",\"type\":\"card\",\"data\":{\"card_name\":\"Notifications\",\"col\":4}},{\"id\":\"card_config\",\"type\":\"card\",\"data\":{\"card_name\":\"Configuration\",\"col\":4}},{\"id\":\"card_data\",\"type\":\"card\",\"data\":{\"card_name\":\"Data\",\"col\":4}},{\"id\":\"card_operations\",\"type\":\"card\",\"data\":{\"card_name\":\"Operations\",\"col\":4}},{\"id\":\"card_logs\",\"type\":\"card\",\"data\":{\"card_name\":\"Logs\",\"col\":4}}]",
  "creation": "2026-03-14 11:35:00.000000",
  "docstatus": 0,
  "doctype": "Workspace",
@@ -123,8 +123,27 @@
   {
    "hidden": 0,
    "is_query_report": 0,
-   "label": "Logs",
+   "label": "Operations",
    "link_count": 1,
+   "onboard": 0,
+   "type": "Card Break"
+  },
+  {
+   "dependencies": "Operations",
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Lark Sync Queue",
+   "link_count": 0,
+   "link_to": "Lark Sync Queue",
+   "link_type": "DocType",
+   "onboard": 0,
+   "type": "Link"
+  },
+  {
+   "hidden": 0,
+   "is_query_report": 0,
+   "label": "Logs",
+   "link_count": 2,
    "onboard": 0,
    "type": "Card Break"
   },

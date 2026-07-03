@@ -5250,7 +5250,7 @@ def handle_interactive_card():
 
 	except Exception as e:
 		frappe.log_error("Lark Card Interaction Failed", frappe.get_traceback())
-		return {"toast": {"type": "error", "content": f"Interaction Error: {str(e)}"}}
+		return {"toast": {"type": "error", "content": "Interaction failed. Please check ERPNext logs."}}
 	finally:
 		# Restore session
 		frappe.set_user(original_user)
@@ -5317,9 +5317,12 @@ def lark_webhook():
 			raw_body_decrypted = _decrypt_lark_payload(config["encrypt_key"], data["encrypt"])
 			data = json.loads(raw_body_decrypted)
 		except Exception as e:
-			frappe.log_error("Lark Webhook Decrypter Error", f"Key: {config.get('encrypt_key')}\nDecrypted String (repr): {repr(raw_body_decrypted) if 'raw_body_decrypted' in locals() else 'None'}\n\nException: {e}\n\n{frappe.get_traceback()}")
+			frappe.log_error(
+				"Lark Webhook Decrypter Error",
+				f"Encrypted payload could not be decoded.\nException: {e}\n\n{frappe.get_traceback()}",
+			)
 			frappe.db.commit()
-			return {"status": "error", "message": f"Decryption/JSON failed: {e}"}
+			return {"status": "error", "message": "Invalid encrypted webhook payload"}
 
 	# 1. URL Verification
 	if data.get("type") == "url_verification":

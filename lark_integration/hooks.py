@@ -2,8 +2,10 @@ app_name = "lark_integration"
 app_title = "Lark Integration"
 app_publisher = "Maxfu"
 app_description = "Seamless integration between ERPNext and Lark Suite (Bitable, Tasks, Calendar, Drive, and Approvals)."
+app_icon = "octicon octicon-bell"
+app_color = "blue"
 app_email = "hello@europlast.pk"
-app_license = "mit"
+app_license = "MIT"
 
 doc_events = {
     "*": {
@@ -238,3 +240,12 @@ custom_fields = {
 
 after_install = "lark_integration.setup.after_install"
 after_migrate = "lark_integration.setup.after_migrate"
+
+fixtures = [
+	{"dt": "Dashboard", "filters": [["module", "=", "Lark Integration"]]},
+	{"dt": "Dashboard Chart", "filters": [["module", "=", "Lark Integration"]]},
+	{"dt": "Desktop Icon", "filters": [["app", "=", "lark_integration"]]},
+	{"dt": "Report", "filters": [["module", "=", "Lark Integration"]]},
+	{"dt": "Workspace", "filters": [["module", "=", "Lark Integration"]]},
+	{"dt": "Workspace Sidebar", "filters": [["module", "=", "Lark Integration"]]},
+]

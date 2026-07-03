@@ -1,0 +1,20 @@
+{
+ "app": "lark_integration",
+ "creation": "2026-07-03 00:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Desktop Icon",
+ "hidden": 0,
+ "icon": "bell",
+ "icon_type": "Link",
+ "idx": 21,
+ "label": "Lark Integration",
+ "link_to": "Lark Integration",
+ "link_type": "Workspace Sidebar",
+ "modified": "2026-07-03 00:00:00.000000",
+ "modified_by": "Administrator",
+ "name": "Lark Integration",
+ "owner": "Administrator",
+ "restrict_removal": 0,
+ "roles": [],
+ "standard": 1
+}
