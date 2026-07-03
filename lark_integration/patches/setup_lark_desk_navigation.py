@@ -100,13 +100,6 @@ SIDEBAR_ITEMS = [
 		"type": "Link",
 		"child": 1,
 	},
-	{
-		"label": "API Dashboard",
-		"link_type": "Dashboard",
-		"link_to": "Lark API Dashboard",
-		"type": "Link",
-		"child": 1,
-	},
 ]
 
 

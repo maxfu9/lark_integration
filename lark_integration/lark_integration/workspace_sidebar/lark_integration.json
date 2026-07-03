@@ -169,18 +169,6 @@
    "link_type": "Report",
    "show_arrow": 0,
    "type": "Link"
-  },
-  {
-   "child": 1,
-   "collapsible": 1,
-   "icon": "",
-   "indent": 0,
-   "keep_closed": 0,
-   "label": "API Dashboard",
-   "link_to": "Lark API Dashboard",
-   "link_type": "Dashboard",
-   "show_arrow": 0,
-   "type": "Link"
   }
  ],
  "modified": "2026-07-03 00:00:00.000000",
