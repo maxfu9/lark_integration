@@ -24,6 +24,12 @@ from redis.exceptions import LockError
 TASK_UPDATE_EVENTS = ("task.task.created_v2", "task.task.updated_v2", "task.task.created_v1", "task.task.updated_v1")
 TASK_DELETE_EVENTS = ("task.task.deleted_v2", "task.task.deleted_v1")
 CALENDAR_CHANGE_EVENT = "calendar.calendar.event.changed_v4"
+APPROVAL_INSTANCE_EVENTS = (
+	"approval_instance",
+	"approval.instance.status_changed_v4",
+	"approval.instance.status_updated",
+	"approval.instance.status_updated_v4",
+)
 
 
 def _verify_lark_signature(key, body_bytes, signature, timestamp, nonce):
@@ -229,7 +235,7 @@ def _get_approval_mappings():
 			
 		mappings = frappe.get_all("Lark Approval Mapping", 
 			filters={"enabled": 1}, 
-			fields=["document_type", "approve_action", "reject_action", "signature_required"]
+			fields=["document_type", "approval_code", "trigger_workflow_state", "approve_action", "reject_action", "signature_required"]
 		)
 		frappe.cache().set_value(cache_key, mappings, expires_in_sec=3600)
 		
@@ -4852,7 +4858,8 @@ def create_demo_sales_order_for_approval():
 		original_user = frappe.session.user
 		if user_row:
 			frappe.set_user(user_row)
-		doc.apply_action("Submit for Approval")
+		from frappe.model.workflow import apply_workflow
+		apply_workflow(doc.as_dict(), "Submit for Approval")
 		frappe.db.commit()
 		if user_row:
 			frappe.set_user(original_user)
@@ -5584,7 +5591,7 @@ def lark_webhook():
 			return {"status": "error", "message": "Security verification failed"}
 
 	event_type = (data.get("header") or {}).get("event_type") or (data.get("event") or {}).get("type")
-	retry_on_failure = event_type in (*TASK_UPDATE_EVENTS, *TASK_DELETE_EVENTS, CALENDAR_CHANGE_EVENT)
+	retry_on_failure = event_type in (*TASK_UPDATE_EVENTS, *TASK_DELETE_EVENTS, CALENDAR_CHANGE_EVENT, *APPROVAL_INSTANCE_EVENTS)
 	try:
 		result = _handle_lark_webhook_event(data)
 	except Exception as e:
@@ -5637,8 +5644,10 @@ def _handle_lark_webhook_event(data):
 			return {"status": "ignored"}
 		return {"status": "error", "message": "Malformed webhook payload (missing event dict)"}
 
-	settings = frappe.get_single("Lark Integration Settings")
 	event_type = header.get("event_type") or event.get("type")
+	if event_type in APPROVAL_INSTANCE_EVENTS:
+		return _handle_lark_approval_instance(event)
+	settings = frappe.get_single("Lark Integration Settings")
 	if event_type == CALENDAR_CHANGE_EVENT:
 		if settings.calendar_sync_enabled and settings.calendar_sync_method == "Webhook" and event.get("calendar_id"):
 			return pull_lark_calendar_events(changed_calendar_id=event["calendar_id"])
@@ -5715,78 +5724,103 @@ def _handle_lark_webhook_event(data):
 				frappe.delete_doc("Lark Task List", list_name, ignore_permissions=True)
 				frappe.db.commit()
 	
-	# --- APPROVAL EVENTS ---
-	elif event_type in ("approval.instance.status_updated", "approval.instance.status_updated_v4"):
-		# Safety check for migration
-		if not _doctype_available("Lark Approval Mapping"):
-			return
-			
-		instance_code = event.get("instance_code")
-		status = event.get("status") # REJECTED, APPROVED, CANCELLED
-		# Operator who performed the action in Lark
-		lark_user_id = event.get("status_refre") or event.get("operator_id") or event.get("approver_id")
-		
-		if instance_code and status:
-			# Search dynamically for any document that has this instance code
-			mappings = _get_approval_mappings()
-			for m in mappings:
-				dt = m.document_type
-				doc_name = frappe.db.get_value(dt, {"lark_approval_instance_id": instance_code}, "name")
-				if doc_name:
-					# 1. Resolve ERPNext User from Lark operator
-					erp_user = frappe.db.get_value("User", {"lark_user_id": lark_user_id}, "name") if lark_user_id else None
-					
-					# 2. Switch session safely to enforce permissions
-					original_user = frappe.session.user
-					if erp_user:
-						frappe.set_user(erp_user)
-					
-					try:
-						doc = frappe.get_doc(dt, doc_name)
-						doc.add_comment("Comment", f"Status updated in Lark: {status}")
-						
-						if status == "APPROVED":
-							doc.add_comment("Comment", f"✅ Approved via Lark by {lark_user_id or 'Approver'}")
-							
-							# 1. Download Signed PDF if required
-							if m.signature_required:
-								_download_lark_signed_pdf(doc, instance_code, token)
-
-							if m.approve_action and hasattr(doc, "workflow_state"):
-								# Enforce native workflow permission!
-								doc.apply_action(m.approve_action)
-							else:
-								# Fallback for simple status sync if no workflow action is mapped
-								if doc.has_permission("write"):
-									doc.db_set("status", "Approved")
-								else:
-									doc.add_comment("Comment", "⚠️ Could not update status: User does not have write permission in ERPNext.")
-						
-						elif status == "REJECTED":
-							doc.add_comment("Comment", f"❌ Rejected via Lark by {lark_user_id or 'Approver'}")
-							if m.reject_action and hasattr(doc, "workflow_state"):
-								doc.apply_action(m.reject_action)
-							else:
-								if doc.has_permission("write"):
-									doc.db_set("status", "Rejected")
-								else:
-									doc.add_comment("Comment", "⚠️ Could not update status: User does not have write permission in ERPNext.")
-						
-						elif status == "CANCELLED":
-							doc.add_comment("Comment", "⚠️ Approval request was cancelled in Lark.")
-						
-						frappe.db.commit()
-					except Exception as e:
-						frappe.log_error(title="Lark Approval Callback Sync Fail", message=frappe.get_traceback())
-						# Log the error back to the document for visibility
-						frappe.get_doc(dt, doc_name).add_comment("Comment", f"❌ Lark Sync Error: {str(e)}")
-					finally:
-						# 3. Always restore the original session user
-						frappe.set_user(original_user)
-					break
-	
 
 	return {"status": "ignored"}
+
+
+def _handle_lark_approval_instance(event):
+	"""Apply a final Lark approval result as the ERPNext user who made the decision."""
+	instance_code = event.get("instance_code")
+	status = event.get("status")
+	if status == "CANCELLED":
+		status = "CANCELED"
+	if not instance_code or status not in ("APPROVED", "REJECTED", "CANCELED"):
+		return {"status": "ignored"}
+
+	# Only fetch details for an instance linked to a mapped ERPNext document.
+	for mapping in _get_approval_mappings():
+		if event.get("approval_code") and event["approval_code"] != mapping.approval_code:
+			continue
+		doctype = mapping.document_type
+		if not frappe.get_meta(doctype).has_field("lark_approval_instance_id"):
+			continue
+		doc_name = frappe.db.get_value(doctype, {"lark_approval_instance_id": instance_code}, "name")
+		if doc_name:
+			return _apply_lark_approval_result(mapping, doc_name, instance_code, status)
+
+	return {"status": "ignored"}
+
+
+def _apply_lark_approval_result(mapping, doc_name, instance_code, status):
+	token = get_lark_token()
+	if not token:
+		return {"status": "failed"}
+
+	url = f"{LARK_BASE_URL}/approval/v4/instances/{quote(instance_code, safe='')}"
+	result = _lark_request("GET", url, token=token)
+	details = (result or {}).get("data")
+	if not details or details.get("status") == "PENDING":
+		return {"status": "failed"}
+	actual_status = details.get("status")
+	if actual_status == "CANCELLED":
+		actual_status = "CANCELED"
+	if details.get("approval_code") != mapping.approval_code or actual_status != status:
+		return {"status": "ignored"}
+
+	doc = frappe.get_doc(mapping.document_type, doc_name, for_update=True)
+	if doc.get("lark_approval_instance_id") != instance_code:
+		return {"status": "ignored"}
+
+	if status == "CANCELED":
+		text = f"Lark approval {instance_code} was canceled."
+		if not frappe.db.exists("Comment", {
+			"reference_doctype": doc.doctype, "reference_name": doc.name, "content": ["like", f"%{text}%"]
+		}):
+			doc.add_comment("Comment", text)
+		return {"status": "success"}
+
+	from frappe.model.workflow import apply_workflow, get_workflow_name
+
+	action = mapping.approve_action if status == "APPROVED" else mapping.reject_action
+	workflow = frappe.get_cached_doc("Workflow", name) if (name := get_workflow_name(doc.doctype)) else None
+	state_field = workflow.workflow_state_field if workflow else "workflow_state"
+	if doc.get(state_field) != mapping.trigger_workflow_state:
+		return {"status": "ignored"}
+
+	new_status = "Approved" if status == "APPROVED" else "Rejected"
+	if not action and doc.get("status") == new_status:
+		return {"status": "ignored"}
+
+	# Instance pushes can omit the operator. Use the most recent matching completed task.
+	decision = max(
+		(task for task in details.get("task_list") or [] if task.get("status") == status),
+		key=lambda task: _safe_int(task.get("end_time"), 0),
+		default={},
+	)
+	lark_user_id = decision.get("user_id")
+	if not lark_user_id:
+		frappe.throw("Lark did not identify the approver for this decision.", frappe.PermissionError)
+	users = frappe.get_all("User", filters={"lark_user_id": lark_user_id, "enabled": 1}, pluck="name", limit=2)
+	if len(users) != 1:
+		frappe.throw("The Lark approver must match exactly one enabled ERPNext user.", frappe.PermissionError)
+
+	original_user = frappe.session.user
+	try:
+		frappe.set_user(users[0])
+		doc.check_permission("write")
+		if action:
+			apply_workflow(doc.as_dict(), action)
+		elif doc.meta.has_field("status"):
+			doc.db_set("status", new_status)
+		else:
+			frappe.throw("Configure a workflow action for the Lark approval result.")
+
+		doc.add_comment("Comment", f"Approval status updated in Lark: {new_status}.")
+		if status == "APPROVED" and mapping.signature_required:
+			_download_lark_signed_pdf(doc, instance_code, token)
+	finally:
+		frappe.set_user(original_user)
+	return {"status": "success"}
 
 
 def _download_lark_signed_pdf(doc, instance_code, token):
