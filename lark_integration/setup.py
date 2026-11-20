@@ -192,9 +192,12 @@ def create_custom_fields_if_missing():
     # Dynamic Lark Record ID for all synced DocTypes
     try:
         if frappe.db.table_exists("Lark Sync Document"):
-            synced_doctypes = frappe.get_all("Lark Sync Document", fields=["reference_doctype"])
+            synced_doctypes = frappe.get_all("Lark Sync Document", fields=["document_type"])
             for sync_doc in synced_doctypes:
-                dt = sync_doc.reference_doctype
+                dt = sync_doc.document_type
+                if not dt:
+                    continue
+
                 if dt not in custom_fields:
                     custom_fields[dt] = []
                 

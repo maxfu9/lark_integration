@@ -21,6 +21,8 @@
   "store_lark_record_id",
   "enable_batching",
   "batch_size",
+  "max_queue_retries",
+  "queue_retry_delay_seconds",
   "column_break_runtime",
   "enable_api_logging",
   "request_timeout",
@@ -171,6 +173,22 @@
    "fieldtype": "Int",
    "label": "Batch Size",
    "description": "Max 500."
+  },
+  {
+   "default": "3",
+   "depends_on": "eval:doc.enable_batching",
+   "fieldname": "max_queue_retries",
+   "fieldtype": "Int",
+   "label": "Max Queue Retries",
+   "description": "Failed batch rows are retried this many times before staying Failed."
+  },
+  {
+   "default": "300",
+   "depends_on": "eval:doc.enable_batching",
+   "fieldname": "queue_retry_delay_seconds",
+   "fieldtype": "Int",
+   "label": "Retry Delay (Seconds)",
+   "description": "Base delay for exponential retry backoff."
   },
   {
    "default": "0",
@@ -418,10 +436,10 @@
   },
   {
    "default": "15 Minutes",
-   "depends_on": "eval:doc.calendar_sync_method == 'Periodic'",
    "fieldname": "calendar_sync_interval",
    "fieldtype": "Select",
    "label": "Refresh Rate",
+   "description": "How often ERPNext checks mapped calendars, including when webhook delivery is unavailable.",
    "options": "5 Minutes\n15 Minutes\n30 Minutes\nHourly"
   },
   {

@@ -9,7 +9,8 @@
   "calendar_name",
   "lark_calendar_id",
   "owner",
-  "is_primary"
+  "is_primary",
+  "sync_token"
  ],
  "fields": [
   {
@@ -46,6 +47,14 @@
    "fieldtype": "Check",
    "label": "Primary Calendar",
    "description": "Enable if this is the user's main Lark calendar."
+  },
+  {
+   "fieldname": "sync_token",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Event Sync Token",
+   "no_copy": 1,
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,

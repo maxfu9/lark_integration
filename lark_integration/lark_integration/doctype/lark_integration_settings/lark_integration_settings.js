@@ -203,6 +203,118 @@ frappe.ui.form.on("Lark Integration Settings", {
 			});
 		}, __("Integration"));
 
+		frm.add_custom_button(__("Health Check"), () => {
+			frappe.call({
+				method: "lark_integration.api.get_lark_health",
+				freeze: true,
+				freeze_message: __("Checking Lark integration..."),
+				callback: (r) => {
+					const data = r.message || {};
+					const checks = data.checks || [];
+					const queue = data.queue || {};
+					const rows = checks.map((check) => {
+						const indicator = check.ok ? "green" : (check.severity === "warning" ? "orange" : "red");
+						return `
+							<tr>
+								<td><span class="indicator ${indicator}">${frappe.utils.escape_html(check.key || "")}</span></td>
+								<td>${frappe.utils.escape_html(check.message || "")}</td>
+							</tr>
+						`;
+					}).join("");
+					const queue_html = `
+						<div class="text-muted" style="margin: 8px 0;">
+							Pending: <b>${queue.pending || 0}</b> &nbsp;
+							Retrying: <b>${queue.retrying || 0}</b> &nbsp;
+							Failed: <b>${queue.failed || 0}</b> &nbsp;
+							Synced: <b>${queue.synced || 0}</b>
+						</div>
+					`;
+					frappe.msgprint({
+						title: __("Lark Health: {0}", [data.status || "unknown"]),
+						message: `
+							${queue_html}
+							<div class="small text-muted" style="margin-bottom: 8px;">${frappe.utils.escape_html(data.webhook_url || "")}</div>
+							<table class="table table-bordered">
+								<tbody>${rows}</tbody>
+							</table>
+						`,
+						wide: true
+					});
+				}
+			});
+		}, __("Operations"));
+
+		frm.add_custom_button(__("Retry Failed Queue"), () => {
+			frappe.prompt(
+				{
+					fieldtype: "Int",
+					fieldname: "limit",
+					label: __("Rows to Retry"),
+					default: 50,
+					reqd: 1
+				},
+				(values) => {
+					frappe.call({
+						method: "lark_integration.api.retry_failed_lark_sync_queue",
+						args: { limit: values.limit },
+						freeze: true,
+						freeze_message: __("Requeueing failed Lark rows..."),
+						callback: (r) => {
+							const data = r.message || {};
+							frappe.show_alert({
+								message: __("Requeued {0} failed queue rows", [data.requeued || 0]),
+								indicator: "green"
+							});
+						}
+					});
+				},
+				__("Retry Failed Queue"),
+				__("Retry")
+			);
+		}, __("Operations"));
+
+		frm.add_custom_button(__("Process Queue Now"), () => {
+			frappe.call({
+				method: "lark_integration.api.run_lark_batch_sync_now",
+				freeze: true,
+				freeze_message: __("Processing Lark queue..."),
+				callback: (r) => {
+					const queue = (r.message && r.message.queue) || {};
+					frappe.msgprint({
+						title: __("Queue Processed"),
+						message: __("Pending: {0}, Retrying: {1}, Failed: {2}, Synced: {3}", [
+							queue.pending || 0,
+							queue.retrying || 0,
+							queue.failed || 0,
+							queue.synced || 0
+						])
+					});
+				}
+			});
+		}, __("Operations"));
+
+		frm.add_custom_button(__("Webhook Test Request"), () => {
+			frappe.call({
+				method: "lark_integration.api.generate_lark_webhook_test_request",
+				callback: (r) => {
+					const data = r.message || {};
+					if (data.status !== "success") {
+						frappe.msgprint({
+							title: __("Webhook Test Request"),
+							message: __(data.message || "Unable to generate test request."),
+							indicator: "red"
+						});
+						return;
+					}
+					frappe.msgprint({
+						title: __("Signed Webhook Test Request"),
+						message: `<pre style="white-space: pre-wrap;">${frappe.utils.escape_html(data.curl || "")}</pre>`,
+						wide: true
+					});
+				}
+			});
+		}, __("Operations"));
+
 		// ToDo Webhook Instructions
 		if (frm.doc.todo_sync_method === "Webhook") {
 			const instructions = `
@@ -227,9 +339,9 @@ frappe.ui.form.on("Lark Integration Settings", {
 					<p>To enable <b>real-time</b> Calendar synchronization, configure the <b>Event Subscription</b> in your Lark Developer Console:</p>
 					<ol>
 						<li>Set <b>Request URL</b> to: <br><code style="background: white; padding: 2px 5px; border-radius: 4px; border: 1px solid #ddd; display: inline-block; margin: 5px 0;">${webhook_url}</code></li>
-						<li>Add events: <code>calendar.calendar_event.created_v4</code>, <code>calendar.calendar_event.updated_v4</code>, and <code>calendar.calendar_event.deleted_v4</code></li>
-						<li>Lark will verify this URL immediately upon saving.</li>
+						<li>Add <code>calendar.calendar.event.changed_v4</code> and subscribe to event changes for each calendar using an authorized Lark user.</li>
 					</ol>
+					<p>ERPNext also checks mapped calendars at the configured refresh rate.</p>
 				</div>
 			`;
 			frm.set_df_property("calendar_webhook_instruction", "options", instructions);
@@ -254,23 +366,29 @@ frappe.ui.form.on("Lark Integration Settings", {
 			});
 		}, "Backup");
 
-		frm.add_custom_button("Sync Tasks Now", () => {
-			frappe.show_alert({ message: __("Starting task synchronization..."), indicator: "blue" });
+		const run_manual_sync = (method, freeze_message) => {
 			frappe.call({
-				method: "lark_integration.api.pull_lark_tasks",
+				method,
+				type: "POST",
 				freeze: true,
-				freeze_message: __("Syncing tasks with Lark..."),
-				args: { publish_progress: 1 },
-				callback: (r) => {
-					if (!r.exc) {
-						frappe.show_alert({ message: __("Task synchronization complete"), indicator: "green" });
+				freeze_message,
+				callback: ({ message: result }) => {
+					if (result?.status === "success") {
+						frappe.show_alert({ message: __("Sync complete. Records processed: {0}.", [result.processed]), indicator: "green" });
 						frm.reload_doc();
+					} else if (result?.status === "disabled") {
+						frappe.show_alert({ message: __("Sync is disabled in Lark Integration Settings."), indicator: "orange" });
+					} else if (result?.status === "partial") {
+						frappe.show_alert({ message: __("Sync incomplete. Records processed: {0}. Failed requests: {1}.", [result.processed, result.failed]), indicator: "orange" });
+					} else {
+						frappe.show_alert({ message: __("Lark sync failed. Check the integration settings and error logs."), indicator: "red" });
 					}
 				},
-				error: (r) => {
-					frappe.show_alert({ message: __("Sync failed. Check error log."), indicator: "red" });
-				},
 			});
+		};
+
+		frm.add_custom_button("Sync Tasks Now", () => {
+			run_manual_sync("lark_integration.api.sync_lark_tasks_now", __("Syncing tasks with Lark..."));
 		}, "ToDo Sync");
 
 		frm.add_custom_button("Fetch Task Lists", () => {
@@ -289,18 +407,7 @@ frappe.ui.form.on("Lark Integration Settings", {
 		}, "ToDo Sync");
 
 		frm.add_custom_button("Sync Calendar Now", () => {
-			frappe.show_alert({ message: __("Starting calendar synchronization..."), indicator: "blue" });
-			frappe.call({
-				method: "lark_integration.api.pull_lark_calendar_events",
-				freeze: true,
-				args: { publish_progress: true },
-				callback: (r) => {
-					if (!r.exc) {
-						frappe.show_alert({ message: __("Calendar synchronization complete"), indicator: "green" });
-						frm.reload_doc();
-					}
-				},
-			});
+			run_manual_sync("lark_integration.api.sync_lark_calendar_now", __("Syncing calendar with Lark..."));
 		}, "Calendar Sync");
 
 		// Realtime progress for backup

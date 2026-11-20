@@ -13,7 +13,9 @@
   "fields",
   "status",
   "error_message",
-  "retry_count"
+  "retry_count",
+  "last_attempt_at",
+  "next_retry_at"
  ],
  "fields": [
   {
@@ -55,7 +57,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Sync Status",
-   "options": "Pending\nSynced\nFailed",
+   "options": "Pending\nRetrying\nSynced\nFailed",
    "in_list_view": 1
   },
   {
@@ -68,6 +70,20 @@
    "fieldname": "retry_count",
    "fieldtype": "Int",
    "label": "Retry Attempts",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "last_attempt_at",
+   "fieldtype": "Datetime",
+   "label": "Last Attempt At",
+   "read_only": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "next_retry_at",
+   "fieldtype": "Datetime",
+   "label": "Next Retry At",
+   "read_only": 1,
    "in_list_view": 1
   }
  ],
